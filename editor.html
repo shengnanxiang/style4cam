@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LUT Studio - Editor</title>
+    <style>
+        :root {
+            --bg: #000000;
+            --panel-bg: #0a0a0a;
+            --toolbar-bg: #0a0a0a;
+            --border: rgba(255, 255, 255, 0.08);
+            --text: #ffffff;
+            --text-muted: rgba(255, 255, 255, 0.55);
+            --text-dim: rgba(255, 255, 255, 0.35);
+            --accent: #ff9f43;
+            --accent-glow: rgba(255, 159, 67, 0.35);
+            --radius: 10px;
+            --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .app {
+            height: 100vh;
+            display: flex;
+        }
+
+        /* ---- Left Toolbar ---- */
+        .toolbar {
+            width: 64px;
+            flex-shrink: 0;
+            background: var(--toolbar-bg);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 14px 0;
+            gap: 8px;
+        }
+
+        .tool-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .tool-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .tool-btn:hover {
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .tool-btn:active {
+            transform: scale(0.95);
+        }
+
+        .tool-btn.accent:hover {
+            color: var(--accent);
+            background: rgba(255, 159, 67, 0.1);
+            border-color: rgba(255, 159, 67, 0.3);
+        }
+
+        .tool-btn.danger:hover {
+            color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.1);
+            border-color: rgba(255, 107, 107, 0.3);
+        }
+
+        .tool-divider {
+            width: 28px;
+            height: 1px;
+            background: var(--border);
+            margin: 6px 0;
+        }
+
+        .tool-spacer {
+            flex: 1;
+        }
+
+        /* ---- Main Preview ---- */
+        .preview {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            cursor: pointer;
+            overflow: hidden;
+        }
+
+        .preview-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: none;
+        }
+
+        .preview-canvas.visible {
+            display: block;
+        }
+
+        .upload-placeholder {
+            text-align: center;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        .upload-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 18px;
+            color: rgba(255, 255, 255, 0.25);
+        }
+
+        .upload-title {
+            font-size: 17px;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .upload-hint {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.25);
+            letter-spacing: 0.05em;
+        }
+
+        .preview.has-image .upload-placeholder {
+            opacity: 0;
+        }
+
+        .preview.drag-over {
+            background: rgba(255, 159, 67, 0.04);
+            box-shadow: inset 0 0 0 2px rgba(255, 159, 67, 0.35);
+        }
+
+        .preview input[type="file"] { display: none; }
+
+        /* ---- Loading ---- */
+        .loading-overlay {
+            display: none;
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.72);
+            z-index: 10;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        .loading-overlay.visible { display: flex; }
+
+        .loading-spinner {
+            width: 38px;
+            height: 38px;
+            border: 2px solid rgba(255, 255, 255, 0.08);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            box-shadow: 0 0 18px var(--accent-glow);
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-text {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--accent);
+            text-shadow: 0 0 10px var(--accent-glow);
+        }
+
+        /* ---- Sidebar ---- */
+        .sidebar {
+            width: 340px;
+            flex-shrink: 0;
+            background: var(--panel-bg);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 18px 20px 14px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .sidebar-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .sidebar-count {
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+
+        .presets-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 14px 16px 24px;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.12) transparent;
+        }
+
+        .presets-scroll::-webkit-scrollbar { width: 5px; }
+        .presets-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.12);
+            border-radius: 3px;
+        }
+
+        .preset-category { margin-bottom: 22px; }
+
+        .category-title {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: 12px;
+            padding-left: 4px;
+        }
+
+        .preset-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .preset-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border: 1px solid transparent;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .preset-item:hover { background: rgba(255, 255, 255, 0.04); }
+
+        .preset-item.selected {
+            background: rgba(255, 255, 255, 0.07);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .preset-badge {
+            width: 52px;
+            height: 30px;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            color: #fff;
+            flex-shrink: 0;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 2px 8px rgba(0,0,0,0.25);
+        }
+
+        .preset-info { flex: 1; min-width: 0; }
+
+        .preset-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .preset-category-label {
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+
+        .preset-check {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent);
+            color: #000;
+            font-size: 10px;
+            font-weight: 700;
+            opacity: 0;
+            transform: scale(0.8);
+            transition: all 0.15s ease;
+        }
+
+        .preset-item.selected .preset-check {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .empty-state {
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 13px;
+        }
+
+        /* Category colors */
+        .cat-fuji .preset-badge { background: linear-gradient(135deg, #e74c3c, #c0392b); }
+        .cat-kodak .preset-badge { background: linear-gradient(135deg, #f39c12, #d35400); }
+        .cat-negative .preset-badge { background: linear-gradient(135deg, #9b59b6, #8e44ad); }
+        .cat-classic .preset-badge { background: linear-gradient(135deg, #1abc9c, #16a085); }
+        .cat-colors .preset-badge { background: linear-gradient(135deg, #e84393, #d63031); }
+        .cat-retro .preset-badge { background: linear-gradient(135deg, #a0522d, #8b4513); }
+        .cat-for-cam .preset-badge { background: linear-gradient(135deg, #3498db, #2980b9); }
+        .cat-original .preset-badge { background: linear-gradient(135deg, #7f8c8d, #555555); }
+
+        /* Mobile */
+        @media (max-width: 768px) {
+            .toolbar { width: 52px; }
+            .sidebar { width: 100%; position: absolute; right: 0; top: 0; bottom: 0; transform: translateX(100%); transition: transform 0.25s; }
+            .sidebar.open { transform: translateX(0); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="app">
+    <nav class="toolbar">
+        <button class="tool-btn" id="backBtn" title="返回列表">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+        </button>
+        <div class="tool-divider"></div>
+        <button class="tool-btn accent" id="uploadBtn" title="上传图片">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </button>
+        <button class="tool-btn" id="downloadBtn" title="下载效果" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+        <div class="tool-spacer"></div>
+        <button class="tool-btn danger" id="deleteBtn" title="删除图片">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+    </nav>
+
+    <div class="preview" id="preview">
+        <canvas id="canvas" class="preview-canvas"></canvas>
+        <div class="upload-placeholder" id="placeholder">
+            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <div class="upload-title">点击或拖拽图片到此处</div>
+            <div class="upload-hint">支持 JPG / PNG / WebP</div>
+        </div>
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">应用 LUT 中</div>
+        </div>
+        <input type="file" id="imageInput" accept="image/*">
+    </div>
+
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-title">风格</div>
+            <div class="sidebar-count" id="presetCount">0 presets</div>
+        </div>
+        <div class="presets-scroll" id="presetsScroll">
+            <div class="empty-state" id="loadingState">加载预设中...</div>
+        </div>
+    </aside>
+</div>
+
+<script src="db.js"></script>
+<script>
+    const LUT_BASE = '.';
+    let lutIndex = null;
+    let categoryOrder = [];
+
+    const DISPLAY_MAP = {
+        'for cam': {
+            '1.portrait-fujiNC2 48': 'fujiNC2 48',
+            '2.Scenery-fujiNN': 'fujiNN',
+            '3.portrait-Florida2': 'Florida2',
+            '4.Food-fugumeishi': '复古美食',
+            '5.Food-xinxian': '新鲜',
+            '6.portrait-deepblue': 'deepblue',
+            '7.night-yejing11': '夜景11',
+        }
+    };
+
+    const CATEGORY_LABELS = {
+        'fuji': 'Fuji',
+        'kodak': 'Kodak',
+        'negative': 'Negative',
+        'classic': 'Classic',
+        'colors': 'Colors',
+        'retro': 'Retro',
+        'for cam': 'For Cam',
+        'original': 'Original'
+    };
+
+    const BADGE_TEXT = {
+        'fuji': 'FU',
+        'kodak': 'KO',
+        'negative': 'NE',
+        'classic': 'CL',
+        'colors': 'CO',
+        'retro': 'RE',
+        'for cam': 'FC',
+        'original': 'OR'
+    };
+
+    const preview = document.getElementById('preview');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const placeholder = document.getElementById('placeholder');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const imageInput = document.getElementById('imageInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const deleteBtn = document.getElementById('deleteBtn');
+    const backBtn = document.getElementById('backBtn');
+    const presetsScroll = document.getElementById('presetsScroll');
+    const presetCount = document.getElementById('presetCount');
+
+    let sourceImage = null;
+    let lutData = null;
+    let hasImage = false;
+    let selectedLutKey = null;
+    let currentImageId = null;
+    let currentImageName = 'image.png';
+
+    // ---- URL params ----
+    function getUrlParam(name) {
+        const params = new URLSearchParams(location.search);
+        return params.get(name);
+    }
+
+    async function loadLutIndex() {
+        try {
+            const resp = await fetch('lut-list.json?v=2');
+            if (!resp.ok) throw new Error('Failed to load lut-list.json');
+            const data = await resp.json();
+            lutIndex = {};
+            const raw = data.categories || {};
+            for (const key of Object.keys(raw)) {
+                lutIndex[key.toLowerCase()] = raw[key];
+            }
+            categoryOrder = (data.order || Object.keys(lutIndex)).map(k => k.toLowerCase());
+            buildPresets();
+        } catch (e) {
+            console.error('Failed to load lut-list.json:', e);
+            presetsScroll.innerHTML = '<div class="empty-state">无法加载预设列表</div>';
+        }
+    }
+
+    loadLutIndex();
+
+    async function fetchLutFile(path) {
+        const url = LUT_BASE + '/' + path;
+        let resp = await fetch(url);
+        if (!resp.ok) {
+            const lowerUrl = LUT_BASE + '/' + path.toLowerCase();
+            resp = await fetch(lowerUrl);
+        }
+        if (!resp.ok) throw new Error('Failed to load: ' + path);
+        return await resp.text();
+    }
+
+    async function loadLutContent(category, filename) {
+        return await fetchLutFile(category + '/' + filename);
+    }
+
+    function formatLutName(category, filename) {
+        const base = filename.replace(/\.(cube|CUBE)$/, '');
+        if (DISPLAY_MAP[category] && DISPLAY_MAP[category][base]) {
+            return DISPLAY_MAP[category][base];
+        }
+        return base;
+    }
+
+    function parseCubeFile(text) {
+        text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/^\uFEFF/, '');
+        const lines = text.split('\n').map(l => l.trim());
+        let size = 0;
+        const values = [];
+
+        for (const line of lines) {
+            if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+            const parts = line.split(/\s+/);
+            if (parts[0] === 'TITLE') continue;
+            if (parts[0] === 'DOMAIN_MIN' || parts[0] === 'DOMAIN_MAX') continue;
+            if (parts[0] === 'LUT_3D_SIZE') {
+                size = parseInt(parts[1]);
+                continue;
+            }
+            if (parts.length >= 3) {
+                const r = parseFloat(parts[0]);
+                const g = parseFloat(parts[1]);
+                const b = parseFloat(parts[2]);
+                if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+                    values.push(r, g, b);
+                }
+            }
+        }
+
+        if (!size || values.length !== size * size * size * 3) {
+            throw new Error('Invalid .cube file (size=' + size + ', values=' + values.length + ')');
+        }
+        return { size, table: new Float32Array(values) };
+    }
+
+    function applyLUTToPixels(srcPixels, w, h, lut) {
+        const { size, table } = lut;
+        const maxIdx = size - 1;
+        const n = size * size;
+        const dst = new Uint8ClampedArray(srcPixels.length);
+
+        for (let i = 0; i < srcPixels.length; i += 4) {
+            const r = srcPixels[i]     / 255;
+            const g = srcPixels[i + 1] / 255;
+            const b = srcPixels[i + 2] / 255;
+            const a = srcPixels[i + 3];
+
+            const rf = Math.min(r * maxIdx, maxIdx);
+            const gf = Math.min(g * maxIdx, maxIdx);
+            const bf = Math.min(b * maxIdx, maxIdx);
+
+            const r0 = Math.floor(rf);
+            const g0 = Math.floor(gf);
+            const b0 = Math.floor(bf);
+            const r1 = Math.min(r0 + 1, maxIdx);
+            const g1 = Math.min(g0 + 1, maxIdx);
+            const b1 = Math.min(b0 + 1, maxIdx);
+
+            const dr = rf - r0;
+            const dg = gf - g0;
+            const db = bf - b0;
+
+            const idx000 = (b0 * n + g0 * size + r0) * 3;
+            const idx100 = (b0 * n + g0 * size + r1) * 3;
+            const idx010 = (b0 * n + g1 * size + r0) * 3;
+            const idx110 = (b0 * n + g1 * size + r1) * 3;
+            const idx001 = (b1 * n + g0 * size + r0) * 3;
+            const idx101 = (b1 * n + g0 * size + r1) * 3;
+            const idx011 = (b1 * n + g1 * size + r0) * 3;
+            const idx111 = (b1 * n + g1 * size + r1) * 3;
+
+            for (let c = 0; c < 3; c++) {
+                const c00 = table[idx000 + c] * (1 - dr) + table[idx100 + c] * dr;
+                const c01 = table[idx001 + c] * (1 - dr) + table[idx101 + c] * dr;
+                const c10 = table[idx010 + c] * (1 - dr) + table[idx110 + c] * dr;
+                const c11 = table[idx011 + c] * (1 - dr) + table[idx111 + c] * dr;
+                const c0  = c00 * (1 - dg) + c10 * dg;
+                const c1  = c01 * (1 - dg) + c11 * dg;
+                const val = c0 * (1 - db) + c1 * db;
+                dst[i + c] = Math.round(Math.max(0, Math.min(1, val)) * 255);
+            }
+            dst[i + 3] = a;
+        }
+        return dst;
+    }
+
+    function render() {
+        if (!sourceImage) return;
+        const w = sourceImage.naturalWidth || sourceImage.width;
+        const h = sourceImage.naturalHeight || sourceImage.height;
+        canvas.width = w;
+        canvas.height = h;
+
+        ctx.drawImage(sourceImage, 0, 0, w, h);
+        if (lutData) {
+            const imageData = ctx.getImageData(0, 0, w, h);
+            imageData.data.set(applyLUTToPixels(imageData.data, w, h, lutData));
+            ctx.putImageData(imageData, 0, 0);
+        }
+    }
+
+    function buildPresets() {
+        if (!lutIndex) return;
+        presetsScroll.innerHTML = '';
+
+        let total = 0;
+        const categories = (categoryOrder || Object.keys(lutIndex)).map(key => {
+            return { key, label: CATEGORY_LABELS[key] || key };
+        });
+
+        const originalCat = { key: 'original', label: CATEGORY_LABELS['original'] };
+        const allCategories = [originalCat, ...categories];
+
+        for (const cat of allCategories) {
+            const categoryEl = document.createElement('div');
+            categoryEl.className = 'preset-category cat-' + cat.key.replace(/\s+/g, '-');
+            categoryEl.innerHTML = '<div class="category-title">' + cat.label + '</div>';
+
+            const list = document.createElement('div');
+            list.className = 'preset-list';
+
+            if (cat.key === 'original') {
+                total += 1;
+                const item = document.createElement('div');
+                item.className = 'preset-item';
+                if (!selectedLutKey) item.classList.add('selected');
+                item.innerHTML = `
+                    <div class="preset-badge">${BADGE_TEXT['original']}</div>
+                    <div class="preset-info">
+                        <div class="preset-name">原图</div>
+                        <div class="preset-category-label">Original</div>
+                    </div>
+                    <div class="preset-check">✓</div>
+                `;
+                item.addEventListener('click', () => selectOriginal());
+                list.appendChild(item);
+                categoryEl.appendChild(list);
+                presetsScroll.appendChild(categoryEl);
+                continue;
+            }
+
+            const files = lutIndex[cat.key] || [];
+            if (!files.length) continue;
+            total += files.length;
+
+            for (const fname of files) {
+                const display = formatLutName(cat.key, fname);
+                const key = cat.key + '/' + fname;
+                const item = document.createElement('div');
+                item.className = 'preset-item';
+                if (selectedLutKey === key) item.classList.add('selected');
+                item.innerHTML = `
+                    <div class="preset-badge">${BADGE_TEXT[cat.key] || cat.label.substring(0, 2).toUpperCase()}</div>
+                    <div class="preset-info">
+                        <div class="preset-name">${display}</div>
+                        <div class="preset-category-label">${cat.label}</div>
+                    </div>
+                    <div class="preset-check">✓</div>
+                `;
+                item.addEventListener('click', () => selectLut(cat.key, fname));
+                list.appendChild(item);
+            }
+
+            categoryEl.appendChild(list);
+            presetsScroll.appendChild(categoryEl);
+        }
+
+        presetCount.textContent = total + ' preset' + (total === 1 ? '' : 's');
+    }
+
+    async function selectLut(category, filename) {
+        loadingOverlay.classList.add('visible');
+        selectedLutKey = category + '/' + filename;
+        buildPresets();
+
+        try {
+            const text = await loadLutContent(category, filename);
+            lutData = parseCubeFile(text);
+            render();
+        } catch (err) {
+            alert('LUT 加载失败: ' + err.message);
+            selectedLutKey = null;
+            lutData = null;
+            buildPresets();
+        } finally {
+            loadingOverlay.classList.remove('visible');
+        }
+    }
+
+    function selectOriginal() {
+        lutData = null;
+        selectedLutKey = null;
+        buildPresets();
+        render();
+    }
+
+    function setImageLoaded(img, name) {
+        sourceImage = img;
+        hasImage = true;
+        preview.classList.add('has-image');
+        canvas.classList.add('visible');
+        downloadBtn.disabled = false;
+        currentImageName = name || 'image.png';
+        lutData = null;
+        selectedLutKey = null;
+        buildPresets();
+        render();
+    }
+
+    async function loadImageFromDB(id) {
+        const item = await getImage(id);
+        if (!item) {
+            alert('找不到该图片，将返回列表');
+            location.href = 'index.html';
+            return;
+        }
+        currentImageId = id;
+        currentImageName = item.name;
+        const img = new Image();
+        img.onload = () => setImageLoaded(img, item.name);
+        img.src = item.dataUrl;
+    }
+
+    async function handleImageFile(file) {
+        if (!file || !file.type.startsWith('image/')) {
+            alert('请选择有效的图片文件（JPG / PNG / WebP）');
+            return;
+        }
+        try {
+            const dataUrl = await fileToDataUrl(file);
+            const id = await saveImage(file.name, dataUrl);
+            location.href = 'editor.html?id=' + encodeURIComponent(id);
+        } catch (err) {
+            alert('图片保存失败: ' + err.message);
+        }
+    }
+
+    function downloadImage() {
+        if (!hasImage) return;
+        const link = document.createElement('a');
+        const base = currentImageName.replace(/\.[^/.]+$/, '');
+        const lutSuffix = selectedLutKey
+            ? '-' + selectedLutKey.replace(/\//g, '-').replace(/\.(cube|CUBE)$/, '')
+            : '-original';
+        link.download = base + lutSuffix + '.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    }
+
+    async function deleteCurrentImage() {
+        if (!currentImageId) return;
+        if (!confirm('确定要删除这张图片吗？')) return;
+        try {
+            await deleteImage(currentImageId);
+            location.href = 'index.html';
+        } catch (err) {
+            alert('删除失败: ' + err.message);
+        }
+    }
+
+    // ---- Events ----
+    backBtn.addEventListener('click', () => location.href = 'index.html');
+    uploadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        imageInput.click();
+    });
+    downloadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        downloadImage();
+    });
+    deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteCurrentImage();
+    });
+
+    preview.addEventListener('click', () => imageInput.click());
+
+    imageInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) handleImageFile(e.target.files[0]);
+    });
+
+    preview.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        preview.classList.add('drag-over');
+    });
+
+    preview.addEventListener('dragleave', () => {
+        preview.classList.remove('drag-over');
+    });
+
+    preview.addEventListener('drop', (e) => {
+        e.preventDefault();
+        preview.classList.remove('drag-over');
+        if (e.dataTransfer.files.length > 0) handleImageFile(e.dataTransfer.files[0]);
+    });
+
+    // ---- Init ----
+    const imageId = getUrlParam('id');
+    if (imageId) {
+        loadImageFromDB(imageId);
+    }
+</script>
+
+</body>
+</html>
