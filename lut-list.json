@@ -1,6 +1,19 @@
 {
-  "order": ["fuji", "kodak", "negative", "classic", "colors", "retro", "for cam"],
+  "order": ["flash", "fuji", "kodak", "negative", "classic", "colors", "retro", "for cam"],
   "categories": {
+    "flash": [
+      "回忆录.CUBE",
+      "岛屿青雾.CUBE",
+      "怀旧绿.CUBE",
+      "港味.CUBE",
+      "灰绿色调.CUBE",
+      "花束暖调.CUBE",
+      "摩卡.CUBE",
+      "日系1996.CUBE",
+      "蓝晒.CUBE",
+      "蓝调时光.CUBE",
+      "重庆森林.CUBE"
+    ],
     "fuji": [
       "NC.cube",
       "Vivid.cube"
