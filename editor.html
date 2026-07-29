@@ -412,6 +412,12 @@
     let lutIndex = null;
     let categoryOrder = [];
 
+    // 解析缓存：filename -> {size, table}，避免每次点击重复解析 .cube
+    const lutParseCache = new Map();
+    // 渲染缓存：(imageId, lutKey) -> 离屏 canvas，LRU 上限避免大图占用过多内存
+    const RENDER_CACHE_MAX = 4;
+    const renderCache = new Map();
+
     const DISPLAY_MAP = {
         'for cam': {
             '1.portrait-fujiNC2 48': 'fujiNC2 48',
@@ -683,8 +689,24 @@
         return dst;
     }
 
+    function renderCacheKey() {
+        return (currentImageId || 'img') + '::' + (selectedLutKey || 'original');
+    }
+
     function render() {
         if (!sourceImage) return;
+        const key = renderCacheKey();
+        const cached = renderCache.get(key);
+        if (cached) {
+            // 命中渲染缓存：直接绘制，跳过全图 getImageData + 逐像素应用
+            renderCache.delete(key);
+            renderCache.set(key, cached);
+            canvas.width = cached.width;
+            canvas.height = cached.height;
+            ctx.drawImage(cached, 0, 0);
+            return;
+        }
+
         const w = sourceImage.naturalWidth || sourceImage.width;
         const h = sourceImage.naturalHeight || sourceImage.height;
         canvas.width = w;
@@ -695,6 +717,17 @@
             const imageData = ctx.getImageData(0, 0, w, h);
             imageData.data.set(applyLUTToPixels(imageData.data, w, h, lutData));
             ctx.putImageData(imageData, 0, 0);
+        }
+
+        // 写入渲染缓存（超出上限则淘汰最久未用的）
+        const off = document.createElement('canvas');
+        off.width = canvas.width;
+        off.height = canvas.height;
+        off.getContext('2d').drawImage(canvas, 0, 0);
+        renderCache.set(key, off);
+        while (renderCache.size > RENDER_CACHE_MAX) {
+            const oldest = renderCache.keys().next().value;
+            renderCache.delete(oldest);
         }
     }
 
@@ -771,13 +804,21 @@
     }
 
     async function selectLut(category, filename) {
-        loadingOverlay.classList.add('visible');
         selectedLutKey = category + '/' + filename;
+        // 渲染缓存已命中时 Everything 都已本地就绪，无需再显示等待遮罩
+        const instant = renderCache.has(renderCacheKey());
+        if (!instant) loadingOverlay.classList.add('visible');
         buildPresets();
 
         try {
             const text = await loadLutContent(category, filename);
-            lutData = parseCubeFile(text);
+            const pkey = category + '/' + filename;
+            let lut = lutParseCache.get(pkey);
+            if (!lut) {
+                lut = parseCubeFile(text);
+                lutParseCache.set(pkey, lut);
+            }
+            lutData = lut;
             render();
         } catch (err) {
             alert('LUT 加载失败: ' + err.message);
@@ -797,6 +838,8 @@
     }
 
     function setImageLoaded(img, name) {
+        // 换了图片，旧的渲染缓存（按 imageId 区分）已失效，清空释放内存
+        renderCache.clear();
         sourceImage = img;
         hasImage = true;
         preview.classList.add('has-image');
