@@ -264,8 +264,8 @@
         .preset-item {
             display: flex;
             align-items: center;
-            gap: 14px;
-            padding: 8px 10px;
+            gap: 16px;
+            padding: 10px 12px;
             border-radius: 10px;
             cursor: pointer;
             transition: all 0.15s ease;
@@ -281,16 +281,15 @@
         }
 
         .preset-badge {
-            min-width: 52px;
-            height: 30px;
-            padding: 0 8px;
-            border-radius: 15px;
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
+            font-size: 13px;
             font-weight: 700;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.02em;
             color: #fff;
             flex-shrink: 0;
             white-space: nowrap;
@@ -476,6 +475,27 @@
         return CATEGORY_LABELS[key] || key;
     }
 
+    // 每个 LUT 的一句话描述（显示在名称下方第二行），按名称语义编写
+    const LUT_DESC = {
+        '原图': '原始照片，未套用任何风格',
+        '回忆录': '怀旧胶片质感，记录旧时光',
+        '岛屿青雾': '清新青蓝，海岛薄雾感',
+        '怀旧绿': '复古青绿，温柔怀旧',
+        '港味': '霓虹港风，电影质感',
+        '灰绿色调': '低饱和灰绿，清冷高级',
+        '花束暖调': '暖粉花束，温柔浪漫',
+        '摩卡': '醇厚摩卡棕，温暖治愈',
+        '日系1996': '日系清新，胶片年代感',
+        '蓝晒': '深蓝蓝晒，古典影像',
+        '蓝调时光': '静谧蓝调，慵懒时光',
+        '重庆森林': '王家卫绿调，迷离暧昧'
+    };
+
+    function getLutDesc(category, filename) {
+        const base = filename.replace(/\.(cube|CUBE)$/, '');
+        return LUT_DESC[base] || LUT_DESC[category] || '';
+    }
+
     const preview = document.getElementById('preview');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -504,7 +524,7 @@
 
     async function loadLutIndex() {
         try {
-            const resp = await fetch('lut-list.json?v=4');
+            const resp = await fetch('lut-list.json?v=5');
             if (!resp.ok) throw new Error('Failed to load lut-list.json');
             const data = await resp.json();
             lutIndex = {};
@@ -671,10 +691,10 @@
                 item.className = 'preset-item';
                 if (!selectedLutKey) item.classList.add('selected');
                 item.innerHTML = `
-                    <div class="preset-badge">${BADGE_TEXT['original']}</div>
+                    <div class="preset-badge">${'原图'.charAt(0)}</div>
                     <div class="preset-info">
                         <div class="preset-name">原图</div>
-                        <div class="preset-category-label">Original</div>
+                        <div class="preset-category-label">${getLutDesc('original', '原图')}</div>
                     </div>
                     <div class="preset-check">✓</div>
                 `;
@@ -696,10 +716,10 @@
                 item.className = 'preset-item';
                 if (selectedLutKey === key) item.classList.add('selected');
                 item.innerHTML = `
-                    <div class="preset-badge" style="background:${getLutColor(cat.key, fname)}">${display}</div>
+                    <div class="preset-badge" style="background:${getLutColor(cat.key, fname)}">${display.charAt(0)}</div>
                     <div class="preset-info">
                         <div class="preset-name">${display}</div>
-                        <div class="preset-category-label">${cat.label}</div>
+                        <div class="preset-category-label">${getLutDesc(cat.key, fname)}</div>
                     </div>
                     <div class="preset-check">✓</div>
                 `;
