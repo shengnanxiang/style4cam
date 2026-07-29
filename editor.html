@@ -281,8 +281,9 @@
         }
 
         .preset-badge {
-            width: 52px;
+            min-width: 52px;
             height: 30px;
+            padding: 0 8px;
             border-radius: 15px;
             display: flex;
             align-items: center;
@@ -292,6 +293,7 @@
             letter-spacing: 0.04em;
             color: #fff;
             flex-shrink: 0;
+            white-space: nowrap;
             text-shadow: 0 1px 2px rgba(0,0,0,0.25);
             box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 2px 8px rgba(0,0,0,0.25);
         }
@@ -447,6 +449,33 @@
         'original': 'OR'
     };
 
+    // 每个 LUT 按名称特点配色（仅作用于图标底色）
+    const LUT_COLORS = {
+        '回忆录': '#b5835a',
+        '岛屿青雾': '#48cae4',
+        '怀旧绿': '#52b788',
+        '港味': '#e5383b',
+        '灰绿色调': '#8a9a5b',
+        '花束暖调': '#e56b9f',
+        '摩卡': '#8b5e3c',
+        '日系1996': '#ffafcc',
+        '蓝晒': '#1d3557',
+        '蓝调时光': '#4361ee',
+        '重庆森林': '#2d6a4f'
+    };
+
+    function getLutColor(category, filename) {
+        const base = filename.replace(/\.(cube|CUBE)$/, '');
+        if (LUT_COLORS[base]) return LUT_COLORS[base];
+        return 'linear-gradient(135deg, #95a5a6, #7f8c8d)';
+    }
+
+    function getCategoryTitle(key) {
+        if (key === 'original') return '';
+        if (key === 'flash') return '风格列表';
+        return CATEGORY_LABELS[key] || key;
+    }
+
     const preview = document.getElementById('preview');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -475,7 +504,7 @@
 
     async function loadLutIndex() {
         try {
-            const resp = await fetch('lut-list.json?v=3');
+            const resp = await fetch('lut-list.json?v=4');
             if (!resp.ok) throw new Error('Failed to load lut-list.json');
             const data = await resp.json();
             lutIndex = {};
@@ -628,7 +657,10 @@
         for (const cat of allCategories) {
             const categoryEl = document.createElement('div');
             categoryEl.className = 'preset-category cat-' + cat.key.replace(/\s+/g, '-');
-            categoryEl.innerHTML = '<div class="category-title">' + cat.label + '</div>';
+            const titleText = getCategoryTitle(cat.key);
+            if (titleText) {
+                categoryEl.innerHTML = '<div class="category-title">' + titleText + '</div>';
+            }
 
             const list = document.createElement('div');
             list.className = 'preset-list';
@@ -664,7 +696,7 @@
                 item.className = 'preset-item';
                 if (selectedLutKey === key) item.classList.add('selected');
                 item.innerHTML = `
-                    <div class="preset-badge">${BADGE_TEXT[cat.key] || cat.label.substring(0, 2).toUpperCase()}</div>
+                    <div class="preset-badge" style="background:${getLutColor(cat.key, fname)}">${display}</div>
                     <div class="preset-info">
                         <div class="preset-name">${display}</div>
                         <div class="preset-category-label">${cat.label}</div>
