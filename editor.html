@@ -179,6 +179,55 @@
 
         .loading-overlay.visible { display: flex; }
 
+        /* ---- 原图开关（图片底部居中浮层） ---- */
+        .original-toggle {
+            position: absolute;
+            bottom: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 14px;
+            background: rgba(20, 20, 22, 0.66);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 999px;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            user-select: none;
+            cursor: pointer;
+        }
+        .preview:not(.has-image) .original-toggle { display: none; }
+        .original-toggle-text {
+            font-size: 13px;
+            color: var(--text-muted);
+            letter-spacing: 0.04em;
+        }
+        .switch {
+            position: relative;
+            width: 40px;
+            height: 22px;
+            border: none;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.2);
+            cursor: pointer;
+            padding: 0;
+            transition: background 0.2s;
+        }
+        .switch.on { background: #ff9f43; }
+        .switch-knob {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #fff;
+            transition: transform 0.2s;
+        }
+        .switch.on .switch-knob { transform: translateX(18px); }
+
         .loading-spinner {
             width: 38px;
             height: 38px;
@@ -392,6 +441,12 @@
             <div class="loading-spinner"></div>
             <div class="loading-text">应用 LUT 中</div>
         </div>
+        <div class="original-toggle" id="originalToggle">
+            <span class="original-toggle-text">原图</span>
+            <button type="button" class="switch" id="originalSwitch" role="switch" aria-checked="false">
+                <span class="switch-knob"></span>
+            </button>
+        </div>
         <input type="file" id="imageInput" accept="image/*">
     </div>
 
@@ -417,6 +472,17 @@
     // 渲染缓存：(imageId, lutKey) -> 离屏 canvas，LRU 上限避免大图占用过多内存
     const RENDER_CACHE_MAX = 4;
     const renderCache = new Map();
+
+    let showOriginal = false;     // 原图开关状态：true=显示原图
+    let currentStyleKey = null;   // 当前选中的风格（原图开关关闭时显示）
+
+    function getFirstStyleKey() {
+        if (!categoryOrder.length) return null;
+        const firstCat = categoryOrder[0];
+        const files = lutIndex[firstCat] || [];
+        if (!files.length) return null;
+        return firstCat + '/' + files[0];
+    }
 
     const DISPLAY_MAP = {
         'for cam': {
@@ -514,6 +580,8 @@
     const backBtn = document.getElementById('backBtn');
     const presetsScroll = document.getElementById('presetsScroll');
     const presetCount = document.getElementById('presetCount');
+    const originalToggle = document.getElementById('originalToggle');
+    const originalSwitch = document.getElementById('originalSwitch');
 
     let sourceImage = null;
     let lutData = null;
@@ -740,8 +808,7 @@
             return { key, label: CATEGORY_LABELS[key] || key };
         });
 
-        const originalCat = { key: 'original', label: CATEGORY_LABELS['original'] };
-        const allCategories = [originalCat, ...categories];
+        const allCategories = categories;
 
         for (const cat of allCategories) {
             const categoryEl = document.createElement('div');
@@ -753,26 +820,6 @@
 
             const list = document.createElement('div');
             list.className = 'preset-list';
-
-            if (cat.key === 'original') {
-                total += 1;
-                const item = document.createElement('div');
-                item.className = 'preset-item';
-                if (!selectedLutKey) item.classList.add('selected');
-                item.innerHTML = `
-                    <div class="preset-badge">${'原图'.charAt(0)}</div>
-                    <div class="preset-info">
-                        <div class="preset-name">原图</div>
-                        <div class="preset-category-label">${getLutDesc('original', '原图')}</div>
-                    </div>
-                    <div class="preset-check">✓</div>
-                `;
-                item.addEventListener('click', () => selectOriginal());
-                list.appendChild(item);
-                categoryEl.appendChild(list);
-                presetsScroll.appendChild(categoryEl);
-                continue;
-            }
 
             const files = lutIndex[cat.key] || [];
             if (!files.length) continue;
@@ -804,7 +851,10 @@
     }
 
     async function selectLut(category, filename) {
-        selectedLutKey = category + '/' + filename;
+        currentStyleKey = category + '/' + filename;
+        showOriginal = false;
+        updateOriginalSwitch();
+        selectedLutKey = currentStyleKey;
         // 渲染缓存已命中时 Everything 都已本地就绪，无需再显示等待遮罩
         const instant = renderCache.has(renderCacheKey());
         if (!instant) loadingOverlay.classList.add('visible');
@@ -830,11 +880,25 @@
         }
     }
 
-    function selectOriginal() {
-        lutData = null;
-        selectedLutKey = null;
-        buildPresets();
-        render();
+    function updateOriginalSwitch() {
+        originalSwitch.classList.toggle('on', showOriginal);
+        originalSwitch.setAttribute('aria-checked', showOriginal ? 'true' : 'false');
+    }
+
+    // 原图开关：on=显示原图，off=显示当前选中的风格
+    function setShowOriginal(on) {
+        showOriginal = on;
+        updateOriginalSwitch();
+        if (on) {
+            selectedLutKey = null;
+            lutData = null;
+            buildPresets();
+            render();
+        } else {
+            if (!currentStyleKey) currentStyleKey = getFirstStyleKey();
+            const [cat, fname] = currentStyleKey.split('/');
+            selectLut(cat, fname);
+        }
     }
 
     function setImageLoaded(img, name) {
@@ -846,10 +910,19 @@
         canvas.classList.add('visible');
         downloadBtn.disabled = false;
         currentImageName = name || 'image.jpg';
-        lutData = null;
-        selectedLutKey = null;
-        buildPresets();
-        render();
+        // 默认选中第一个风格，原图开关关闭
+        currentStyleKey = getFirstStyleKey();
+        showOriginal = false;
+        updateOriginalSwitch();
+        if (currentStyleKey) {
+            const [cat, fname] = currentStyleKey.split('/');
+            selectLut(cat, fname);
+        } else {
+            selectedLutKey = null;
+            lutData = null;
+            buildPresets();
+            render();
+        }
     }
 
     async function loadImageFromDB(id) {
@@ -927,6 +1000,10 @@
     });
 
     preview.addEventListener('click', () => imageInput.click());
+    originalToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setShowOriginal(!showOriginal);
+    });
 
     imageInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) handleImageFile(e.target.files[0]);
