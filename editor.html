@@ -514,7 +514,7 @@
     let hasImage = false;
     let selectedLutKey = null;
     let currentImageId = null;
-    let currentImageName = 'image.png';
+    let currentImageName = 'image.jpg';
 
     // ---- URL params ----
     function getUrlParam(name) {
@@ -802,7 +802,7 @@
         preview.classList.add('has-image');
         canvas.classList.add('visible');
         downloadBtn.disabled = false;
-        currentImageName = name || 'image.png';
+        currentImageName = name || 'image.jpg';
         lutData = null;
         selectedLutKey = null;
         buildPresets();
@@ -844,8 +844,16 @@
         const lutSuffix = selectedLutKey
             ? '-' + selectedLutKey.replace(/\//g, '-').replace(/\.(cube|CUBE)$/, '')
             : '-original';
-        link.download = base + lutSuffix + '.png';
-        link.href = canvas.toDataURL('image/png');
+        link.download = base + lutSuffix + '.jpg';
+        // JPG 不支持透明通道，导出前先铺白底，避免透明区域变黑
+        const out = document.createElement('canvas');
+        out.width = canvas.width;
+        out.height = canvas.height;
+        const octx = out.getContext('2d');
+        octx.fillStyle = '#ffffff';
+        octx.fillRect(0, 0, out.width, out.height);
+        octx.drawImage(canvas, 0, 0);
+        link.href = out.toDataURL('image/jpeg', 0.92);
         link.click();
     }
 
