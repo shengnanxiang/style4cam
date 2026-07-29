@@ -524,7 +524,7 @@
 
     async function loadLutIndex() {
         try {
-            const resp = await fetch('lut-list.json?v=5');
+            const resp = await fetch('lut-list.json?v=6');
             if (!resp.ok) throw new Error('Failed to load lut-list.json');
             const data = await resp.json();
             lutIndex = {};
@@ -534,6 +534,7 @@
             }
             categoryOrder = (data.order || Object.keys(lutIndex)).map(k => k.toLowerCase());
             buildPresets();
+            prefetchAllLuts();
         } catch (e) {
             console.error('Failed to load lut-list.json:', e);
             presetsScroll.innerHTML = '<div class="empty-state">无法加载预设列表</div>';
@@ -542,15 +543,50 @@
 
     loadLutIndex();
 
+    const LUT_CACHE = 'lut-cache-v1';
+
     async function fetchLutFile(path) {
         const url = LUT_BASE + '/' + path;
+        if ('caches' in window) {
+            try {
+                const hit = await caches.match(url);
+                if (hit) return await hit.text();
+            } catch (e) { /* 缓存读取失败则走网络 */ }
+        }
         let resp = await fetch(url);
         if (!resp.ok) {
             const lowerUrl = LUT_BASE + '/' + path.toLowerCase();
             resp = await fetch(lowerUrl);
         }
         if (!resp.ok) throw new Error('Failed to load: ' + path);
+        if ('caches' in window) {
+            try {
+                const clone = resp.clone();
+                const cache = await caches.open(LUT_CACHE);
+                await cache.put(url, clone);
+            } catch (e) { /* 缓存写入失败不影响使用 */ }
+        }
         return await resp.text();
+    }
+
+    // 进入网站后，在后台静默预下载当前展示的全部 LUT 并持久化到浏览器缓存
+    function prefetchAllLuts() {
+        if (!('caches' in window) || !categoryOrder || !lutIndex) return;
+        const urls = [];
+        for (const key of categoryOrder) {
+            for (const f of (lutIndex[key] || [])) {
+                urls.push(LUT_BASE + '/' + key + '/' + f);
+            }
+        }
+        if (urls.length === 0) return;
+        caches.open(LUT_CACHE).then(cache => {
+            urls.forEach(u => {
+                // 已缓存则跳过，未缓存才静默下载，避免重复请求
+                cache.match(u).then(hit => {
+                    if (!hit) cache.add(u).catch(() => {});
+                }).catch(() => {});
+            });
+        }).catch(() => {});
     }
 
     async function loadLutContent(category, filename) {
