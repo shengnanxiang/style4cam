@@ -1,5 +1,5 @@
 {
-  "order": ["flash", "fuji", "kodak", "negative", "classic", "colors", "retro", "for cam"],
+  "order": ["flash"],
   "categories": {
     "flash": [
       "回忆录.CUBE",
