@@ -263,7 +263,13 @@
             padding: 18px 20px 14px;
             border-bottom: 1px solid var(--border);
             display: flex;
-            align-items: center;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .sidebar-title-row {
+            display: flex;
+            align-items: baseline;
             justify-content: space-between;
         }
 
@@ -276,6 +282,50 @@
         .sidebar-count {
             font-size: 12px;
             color: var(--text-dim);
+        }
+
+        /* ---- 预加载所有 ---- */
+        .preload-btn {
+            width: 100%;
+            padding: 9px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text);
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .preload-btn:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.25); }
+        .preload-btn:disabled { opacity: 0.6; cursor: default; }
+        .preload-progress { width: 100%; }
+        .preload-bar {
+            width: 100%;
+            height: 8px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+        }
+        .preload-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: #ff9f43;
+            transition: width 0.2s;
+        }
+        .preload-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 6px;
+        }
+        .preload-text { font-size: 12px; color: var(--text-dim); }
+        .preload-cancel {
+            border: none;
+            background: none;
+            color: #ff6b6b;
+            font-size: 12px;
+            cursor: pointer;
+            padding: 2px 4px;
         }
 
         .presets-scroll {
@@ -452,8 +502,18 @@
 
     <aside class="sidebar">
         <div class="sidebar-header">
-            <div class="sidebar-title">风格</div>
-            <div class="sidebar-count" id="presetCount">0 presets</div>
+            <div class="sidebar-title-row">
+                <div class="sidebar-title">风格</div>
+                <div class="sidebar-count" id="presetCount">0 presets</div>
+            </div>
+            <button class="preload-btn" id="preloadBtn" type="button">预加载所有</button>
+            <div class="preload-progress" id="preloadProgress" hidden>
+                <div class="preload-bar"><div class="preload-bar-fill" id="preloadBarFill"></div></div>
+                <div class="preload-meta">
+                    <span class="preload-text" id="preloadText">0 / 0</span>
+                    <button class="preload-cancel" id="preloadCancel" type="button">取消</button>
+                </div>
+            </div>
         </div>
         <div class="presets-scroll" id="presetsScroll">
             <div class="empty-state" id="loadingState">加载预设中...</div>
@@ -580,6 +640,11 @@
     const backBtn = document.getElementById('backBtn');
     const presetsScroll = document.getElementById('presetsScroll');
     const presetCount = document.getElementById('presetCount');
+    const preloadBtn = document.getElementById('preloadBtn');
+    const preloadProgress = document.getElementById('preloadProgress');
+    const preloadBarFill = document.getElementById('preloadBarFill');
+    const preloadText = document.getElementById('preloadText');
+    const preloadCancel = document.getElementById('preloadCancel');
     const originalToggle = document.getElementById('originalToggle');
     const originalSwitch = document.getElementById('originalSwitch');
 
@@ -598,7 +663,7 @@
 
     async function loadLutIndex() {
         try {
-            const resp = await fetch('lut-list.json?v=6');
+            const resp = await fetch('lut-list.json?v=7');
             if (!resp.ok) throw new Error('Failed to load lut-list.json');
             const data = await resp.json();
             lutIndex = {};
@@ -608,7 +673,7 @@
             }
             categoryOrder = (data.order || Object.keys(lutIndex)).map(k => k.toLowerCase());
             buildPresets();
-            prefetchAllLuts();
+            refreshPreloadState();
         } catch (e) {
             console.error('Failed to load lut-list.json:', e);
             presetsScroll.innerHTML = '<div class="empty-state">无法加载预设列表</div>';
@@ -619,8 +684,13 @@
 
     const LUT_CACHE = 'lut-cache-v1';
 
+    // 统一用绝对地址（相对地址 + 中文文件名会让 Cache Storage 静默失败）
+    function lutAbsUrl(path) {
+        return new URL(LUT_BASE + '/' + path, location.href).href;
+    }
+
     async function fetchLutFile(path) {
-        const url = LUT_BASE + '/' + path;
+        const url = lutAbsUrl(path);
         if ('caches' in window) {
             try {
                 const hit = await caches.match(url);
@@ -629,7 +699,7 @@
         }
         let resp = await fetch(url);
         if (!resp.ok) {
-            const lowerUrl = LUT_BASE + '/' + path.toLowerCase();
+            const lowerUrl = lutAbsUrl(path.toLowerCase());
             resp = await fetch(lowerUrl);
         }
         if (!resp.ok) throw new Error('Failed to load: ' + path);
@@ -643,24 +713,104 @@
         return await resp.text();
     }
 
-    // 进入网站后，在后台静默预下载当前展示的全部 LUT 并持久化到浏览器缓存
-    function prefetchAllLuts() {
-        if (!('caches' in window) || !categoryOrder || !lutIndex) return;
+    // 显式“预加载所有”：用户点击后顺序下载并写入缓存，带进度与取消
+    let preloadAborted = false;
+    let preloadController = null;
+
+    function allLutUrls() {
         const urls = [];
         for (const key of categoryOrder) {
             for (const f of (lutIndex[key] || [])) {
-                urls.push(LUT_BASE + '/' + key + '/' + f);
+                urls.push(lutAbsUrl(key + '/' + f));
             }
         }
-        if (urls.length === 0) return;
-        caches.open(LUT_CACHE).then(cache => {
-            urls.forEach(u => {
-                // 已缓存则跳过，未缓存才静默下载，避免重复请求
-                cache.match(u).then(hit => {
-                    if (!hit) cache.add(u).catch(() => {});
-                }).catch(() => {});
-            });
-        }).catch(() => {});
+        return urls;
+    }
+
+    function setPreloadUI(state, done, total) {
+        if (state === 'idle') {
+            preloadBtn.hidden = false;
+            preloadProgress.hidden = true;
+            preloadBtn.textContent = '预加载所有';
+            preloadBtn.disabled = false;
+        } else if (state === 'running') {
+            preloadBtn.hidden = true;
+            preloadProgress.hidden = false;
+            const pct = total ? Math.round((done / total) * 100) : 0;
+            preloadBarFill.style.width = pct + '%';
+            preloadText.textContent = done + ' / ' + total + '  (' + pct + '%)';
+        } else if (state === 'done') {
+            preloadBtn.hidden = false;
+            preloadProgress.hidden = true;
+            preloadBtn.textContent = '✓ 已预加载 (' + done + '/' + total + ')';
+            preloadBtn.disabled = false;
+        }
+    }
+
+    // 进入页面时，根据已缓存情况刷新按钮文案
+    async function refreshPreloadState() {
+        if (!('caches' in window)) return;
+        const items = allLutUrls();
+        if (!items.length) return;
+        try {
+            const cache = await caches.open(LUT_CACHE);
+            let cached = 0;
+            for (const url of items) {
+                if (await cache.match(url)) cached++;
+            }
+            if (cached === items.length) {
+                setPreloadUI('done', cached, items.length);
+            } else if (cached > 0) {
+                preloadBtn.hidden = false;
+                preloadProgress.hidden = true;
+                preloadBtn.textContent = '继续预加载 (' + cached + '/' + items.length + ')';
+                preloadBtn.disabled = false;
+            }
+        } catch (e) { /* 忽略 */ }
+    }
+
+    async function preloadAll() {
+        if (!('caches' in window)) {
+            alert('当前浏览器不支持缓存预加载，请改用现代浏览器（Chrome / Edge / Firefox / Safari）。');
+            return;
+        }
+        const items = allLutUrls();
+        const total = items.length;
+        if (!total) return;
+
+        preloadAborted = false;
+        setPreloadUI('running', 0, total);
+        let done = 0;
+        try {
+            const cache = await caches.open(LUT_CACHE);
+            for (const url of items) {
+                if (preloadAborted) break;
+                try {
+                    const hit = await cache.match(url);
+                    if (!hit) {
+                        preloadController = new AbortController();
+                        const resp = await fetch(url, { signal: preloadController.signal });
+                        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                        await cache.put(url, resp.clone());
+                    }
+                } catch (e) {
+                    if (preloadAborted) break;
+                    console.warn('预加载失败（已跳过）:', url, e);
+                }
+                done++;
+                setPreloadUI('running', done, total);
+            }
+        } catch (e) {
+            console.error('预加载异常:', e);
+        } finally {
+            preloadController = null;
+        }
+        setPreloadUI(preloadAborted ? 'idle' : 'done', done, total);
+    }
+
+    function cancelPreload() {
+        preloadAborted = true;
+        if (preloadController) preloadController.abort();
     }
 
     async function loadLutContent(category, filename) {
@@ -1004,6 +1154,8 @@
         e.stopPropagation();
         setShowOriginal(!showOriginal);
     });
+    preloadBtn.addEventListener('click', preloadAll);
+    preloadCancel.addEventListener('click', cancelPreload);
 
     imageInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) handleImageFile(e.target.files[0]);
