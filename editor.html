@@ -668,7 +668,7 @@
 
     async function loadLutIndex() {
         try {
-            const resp = await fetch('lut-list.json?v=8');
+            const resp = await fetch('lut-list.json?v=9');
             if (!resp.ok) throw new Error('Failed to load lut-list.json');
             const data = await resp.json();
             lutIndex = {};
