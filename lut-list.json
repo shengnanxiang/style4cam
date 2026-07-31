@@ -1,22 +1,14 @@
 {
-  "order": ["flash", "classic", "colors", "retro", "movie", "lab"],
+  "order": ["classic", "colors", "retro", "movie", "lab"],
   "categories": {
-    "flash": [
-      "回忆录.CUBE",
-      "岛屿青雾.CUBE",
-      "怀旧绿.CUBE",
-      "摩卡.CUBE",
-      "日系1996.CUBE",
-      "港味.CUBE",
-      "灰绿色调.CUBE",
-      "花束暖调.CUBE"
-    ],
     "classic": [
-      "Olympus.cube",
       "人像琥珀提亮.cube",
+      "奥林帕斯.cube",
       "富士NN.cube",
+      "日系1996-f.CUBE",
       "柏林之冬.cube",
       "柯达金.cube",
+      "港味-f.CUBE",
       "黑白纪实.cube"
     ],
     "colors": [
@@ -24,23 +16,32 @@
       "彩色反转T64.cube",
       "彩色负片100T.cube",
       "彩色负片.cube",
+      "摩卡-f.CUBE",
+      "灰绿色调-f.CUBE",
+      "蓝晒-f.CUBE",
+      "蓝调时光-f.CUBE",
       "蓝调空间.cube"
     ],
-    "retro": [
-      "复古风.cube",
-      "黑白老照片 1.cube",
-      "黑白老照片 2.cube"
+    "lab": [
+      "交叉冲洗.cube",
+      "岛屿青雾-f.CUBE",
+      "漂白旁路.cube",
+      "花束暖调-f.CUBE"
     ],
     "movie": [
       "千禧电影.cube",
       "电影感.cube",
       "重庆森林.cube",
+      "重庆森林-f.CUBE",
       "霸王别姬-红.cube",
       "霸王别姬-蓝.cube"
     ],
-    "lab": [
-      "交叉冲洗.cube",
-      "漂白旁路.cube"
+    "retro": [
+      "回忆录-f.CUBE",
+      "复古风.cube",
+      "怀旧绿-f.CUBE",
+      "黑白老照片 1.cube",
+      "黑白老照片 2.cube"
     ]
   }
 }
