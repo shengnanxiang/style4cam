@@ -566,6 +566,8 @@
         'retro': 'Retro',
         'for cam': 'For Cam',
         'flash': 'Flash',
+        'lab': 'Lab',
+        'movie': 'Movie',
         'original': 'Original'
     };
 
@@ -578,6 +580,8 @@
         'retro': 'RE',
         'for cam': 'FC',
         'flash': 'FL',
+        'lab': 'LA',
+        'movie': 'MO',
         'original': 'OR'
     };
 
@@ -664,7 +668,7 @@
 
     async function loadLutIndex() {
         try {
-            const resp = await fetch('lut-list.json?v=7');
+            const resp = await fetch('lut-list.json?v=8');
             if (!resp.ok) throw new Error('Failed to load lut-list.json');
             const data = await resp.json();
             lutIndex = {};
