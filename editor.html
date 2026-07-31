@@ -530,7 +530,8 @@
     // 解析缓存：filename -> {size, table}，避免每次点击重复解析 .cube
     const lutParseCache = new Map();
     // 渲染缓存：(imageId, lutKey) -> 离屏 canvas，LRU 上限避免大图占用过多内存
-    const RENDER_CACHE_MAX = 4;
+    const RENDER_CACHE_MAX = 16; // 放大以容纳后台预渲染的全部风格（预览分辨率下内存可控）
+    const PREVIEW_MAX = 1600; // 屏幕预览渲染的最长边像素；导出仍用原图高清
     const renderCache = new Map();
 
     let showOriginal = false;     // 原图开关状态：true=显示原图
@@ -907,8 +908,15 @@
         return dst;
     }
 
-    function renderCacheKey() {
-        return (currentImageId || 'img') + '::' + (selectedLutKey || 'original');
+    function renderCacheKey(lutKey) {
+        return (currentImageId || 'img') + '::' + (lutKey || selectedLutKey || 'original');
+    }
+
+    function previewDims() {
+        const nw = sourceImage.naturalWidth || sourceImage.width;
+        const nh = sourceImage.naturalHeight || sourceImage.height;
+        const scale = Math.min(1, PREVIEW_MAX / Math.max(nw, nh));
+        return { w: Math.max(1, Math.round(nw * scale)), h: Math.max(1, Math.round(nh * scale)) };
     }
 
     function render() {
@@ -924,28 +932,65 @@
             ctx.drawImage(cached, 0, 0);
             return;
         }
+        // 预览按降分辨率渲染（PREVIEW_MAX），导出时再单独跑全分辨率
+        const { w, h } = previewDims();
+        paintCanvas(canvas, w, h, lutData);
+        cacheRender(key, canvas);
+    }
 
-        const w = sourceImage.naturalWidth || sourceImage.width;
-        const h = sourceImage.naturalHeight || sourceImage.height;
-        canvas.width = w;
-        canvas.height = h;
-
-        ctx.drawImage(sourceImage, 0, 0, w, h);
-        if (lutData) {
-            const imageData = ctx.getImageData(0, 0, w, h);
-            imageData.data.set(applyLUTToPixels(imageData.data, w, h, lutData));
-            ctx.putImageData(imageData, 0, 0);
+    // 把 sourceImage 按给定尺寸绘制并套用 LUT，写入 targetCanvas
+    function paintCanvas(targetCanvas, w, h, lut) {
+        targetCanvas.width = w;
+        targetCanvas.height = h;
+        const tctx = targetCanvas.getContext('2d');
+        tctx.drawImage(sourceImage, 0, 0, w, h);
+        if (lut) {
+            const imageData = tctx.getImageData(0, 0, w, h);
+            imageData.data.set(applyLUTToPixels(imageData.data, w, h, lut));
+            tctx.putImageData(imageData, 0, 0);
         }
+    }
 
-        // 写入渲染缓存（超出上限则淘汰最久未用的）
+    function cacheRender(key, srcCanvas) {
         const off = document.createElement('canvas');
-        off.width = canvas.width;
-        off.height = canvas.height;
-        off.getContext('2d').drawImage(canvas, 0, 0);
+        off.width = srcCanvas.width;
+        off.height = srcCanvas.height;
+        off.getContext('2d').drawImage(srcCanvas, 0, 0);
         renderCache.set(key, off);
         while (renderCache.size > RENDER_CACHE_MAX) {
             const oldest = renderCache.keys().next().value;
             renderCache.delete(oldest);
+        }
+    }
+
+    // 选图后后台预渲染全部风格（降分辨率），使之后点哪个都秒出
+    let prerenderToken = 0;
+    async function prerenderAll() {
+        if (!sourceImage || !categoryOrder || !lutIndex) return;
+        const token = ++prerenderToken;
+        const imgId = currentImageId || 'img';
+        const { w, h } = previewDims();
+        for (const key of categoryOrder) {
+            for (const fname of (lutIndex[key] || [])) {
+                if (token !== prerenderToken) return; // 图片已切换，中止后台任务
+                const styleKey = key + '/' + fname;
+                const rk = imgId + '::' + styleKey;
+                if (renderCache.has(rk)) continue; // 已渲染（如用户已点过）
+                try {
+                    const text = await loadLutContent(key, fname);
+                    const pkey = styleKey;
+                    let lut = lutParseCache.get(pkey);
+                    if (!lut) { lut = parseCubeFile(text); lutParseCache.set(pkey, lut); }
+                    const off = document.createElement('canvas');
+                    paintCanvas(off, w, h, lut);
+                    renderCache.set(rk, off);
+                    while (renderCache.size > RENDER_CACHE_MAX) {
+                        const oldest = renderCache.keys().next().value;
+                        renderCache.delete(oldest);
+                    }
+                } catch (e) { console.warn('预渲染失败（已跳过）:', styleKey, e); }
+                await new Promise(r => setTimeout(r, 0)); // 让出主线程，避免卡顿
+            }
         }
     }
 
@@ -1073,6 +1118,8 @@
             buildPresets();
             render();
         }
+        // 选图后后台预渲染全部风格，使之后点哪个都秒出（不再有"应用Lut中"）
+        prerenderAll();
     }
 
     async function loadImageFromDB(id) {
@@ -1111,14 +1158,21 @@
             ? '-' + selectedLutKey.replace(/\//g, '-').replace(/\.(cube|CUBE)$/, '')
             : '-original';
         link.download = base + lutSuffix + '.jpg';
-        // JPG 不支持透明通道，导出前先铺白底，避免透明区域变黑
+        // 导出用原图全分辨率渲染（不受预览降分辨率影响）；JPG 不支持透明通道，先铺白底
+        const nw = sourceImage.naturalWidth || sourceImage.width;
+        const nh = sourceImage.naturalHeight || sourceImage.height;
         const out = document.createElement('canvas');
-        out.width = canvas.width;
-        out.height = canvas.height;
+        out.width = nw;
+        out.height = nh;
         const octx = out.getContext('2d');
         octx.fillStyle = '#ffffff';
-        octx.fillRect(0, 0, out.width, out.height);
-        octx.drawImage(canvas, 0, 0);
+        octx.fillRect(0, 0, nw, nh);
+        octx.drawImage(sourceImage, 0, 0, nw, nh);
+        if (lutData) {
+            const imageData = octx.getImageData(0, 0, nw, nh);
+            imageData.data.set(applyLUTToPixels(imageData.data, nw, nh, lutData));
+            octx.putImageData(imageData, 0, 0);
+        }
         link.href = out.toDataURL('image/jpeg', 0.92);
         link.click();
     }
