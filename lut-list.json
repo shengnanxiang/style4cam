@@ -1,62 +1,46 @@
 {
-  "order": ["flash"],
+  "order": ["flash", "classic", "colors", "retro", "movie", "lab"],
   "categories": {
     "flash": [
       "回忆录.CUBE",
       "岛屿青雾.CUBE",
       "怀旧绿.CUBE",
-      "港味.CUBE",
-      "灰绿色调.CUBE",
-      "花束暖调.CUBE",
       "摩卡.CUBE",
       "日系1996.CUBE",
-      "蓝晒.CUBE",
-      "蓝调时光.CUBE",
-      "重庆森林.CUBE"
-    ],
-    "fuji": [
-      "NC.cube",
-      "Vivid.cube"
-    ],
-    "kodak": [
-      "Ektar 100.cube",
-      "Gold 100.cube",
-      "Gold 200.cube",
-      "Portra 400.cube",
-      "Portra 800.cube"
-    ],
-    "negative": [
-      "classic warm.cube",
-      "cool blue.cube",
-      "faded vintage.cube",
-      "high contrast.cube",
-      "soft pastel.cube"
+      "港味.CUBE",
+      "灰绿色调.CUBE",
+      "花束暖调.CUBE"
     ],
     "classic": [
-      "TFT.cube",
       "Olympus.cube",
-      "经典人像.cube"
+      "人像琥珀提亮.cube",
+      "富士NN.cube",
+      "柏林之冬.cube",
+      "柯达金.cube",
+      "黑白纪实.cube"
     ],
     "colors": [
-      "姜黄.cube",
-      "Florida.cube",
-      "丹橘.cube",
-      "青蓝夜景.cube",
-      "滋味.cube"
+      "低饱和蓝晒.cube",
+      "彩色反转T64.cube",
+      "彩色负片100T.cube",
+      "彩色负片.cube",
+      "蓝调空间.cube"
     ],
     "retro": [
-      "复古胶片.cube",
-      "复古暖棕.cube",
-      "复古棕.cube"
+      "复古风.cube",
+      "黑白老照片 1.cube",
+      "黑白老照片 2.cube"
     ],
-    "for cam": [
-      "1.portrait-fujiNC2 48.cube",
-      "2.Scenery-fujiNN.cube",
-      "3.portrait-Florida2.cube",
-      "4.Food-fugumeishi.cube",
-      "5.Food-xinxian.cube",
-      "6.portrait-deepblue.cube",
-      "7.night-yejing11.CUBE"
+    "movie": [
+      "千禧电影.cube",
+      "电影感.cube",
+      "重庆森林.cube",
+      "霸王别姬-红.cube",
+      "霸王别姬-蓝.cube"
+    ],
+    "lab": [
+      "交叉冲洗.cube",
+      "漂白旁路.cube"
     ]
   }
 }
