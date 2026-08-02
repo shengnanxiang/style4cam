@@ -635,18 +635,40 @@
     };
 
     // 每个 LUT 按名称特点配色（仅作用于图标底色）
+    // 每个 LUT 的圆点图标配色（与风格语义匹配，渐变更精致），覆盖全部 32 个
     const LUT_COLORS = {
-        '回忆录': '#b5835a',
-        '岛屿青雾': '#48cae4',
-        '怀旧绿': '#52b788',
-        '港味': '#e5383b',
-        '灰绿色调': '#8a9a5b',
-        '花束暖调': '#e56b9f',
-        '摩卡': '#8b5e3c',
-        '日系1996': '#ffafcc',
-        '蓝晒': '#1d3557',
-        '蓝调时光': '#4361ee',
-        '重庆森林': '#2d6a4f'
+        '日系1996': 'linear-gradient(135deg, #ffafcc, #a2d2ff)',
+        '交叉冲洗': 'linear-gradient(135deg, #06d6a0, #ef476f)',
+        '彩色负片100T': 'linear-gradient(135deg, #f4a261, #e76f51)',
+        '摩卡': 'linear-gradient(135deg, #a47148, #6f4518)',
+        '电影感': 'linear-gradient(135deg, #264653, #e9c46a)',
+        '霸王别姬·蓝': 'linear-gradient(135deg, #48cae4, #023e8a)',
+        '回忆录': 'linear-gradient(135deg, #c8975a, #8a5a2b)',
+        '彩色反转T64': 'linear-gradient(135deg, #83c5be, #006d77)',
+        '霸王别姬·红': 'linear-gradient(135deg, #e5383b, #9d0208)',
+        '人像琥珀提亮': 'linear-gradient(135deg, #ffb703, #fb8500)',
+        '黑白老照片 2': 'linear-gradient(135deg, #9c8b7a, #5c4f43)',
+        '怀旧绿': 'linear-gradient(135deg, #74c69d, #2d6a4f)',
+        '柏林之冬': 'linear-gradient(135deg, #8d99ae, #2b2d42)',
+        '蓝调时光': 'linear-gradient(135deg, #4895ef, #3a0ca3)',
+        '漂白旁路': 'linear-gradient(135deg, #adb5bd, #495057)',
+        '奥林帕斯': 'linear-gradient(135deg, #80ed99, #38a3a5)',
+        '复古风': 'linear-gradient(135deg, #e9a06b, #b5651d)',
+        '黑白纪实': 'linear-gradient(135deg, #b0b0b0, #6c6c6c)',
+        '低饱和蓝晒': 'linear-gradient(135deg, #5e9ed6, #1b4965)',
+        '千禧电影': 'linear-gradient(135deg, #ff8fab, #90e0ef)',
+        '重庆森林 (f)': 'linear-gradient(135deg, #52b788, #1b4332)',
+        '蓝晒': 'linear-gradient(135deg, #1d3557, #0d1b2a)',
+        '港味': 'linear-gradient(135deg, #ef233c, #d00000)',
+        '柯达金': 'linear-gradient(135deg, #ffd166, #f4a261)',
+        '黑白老照片 1': 'linear-gradient(135deg, #a8a8a8, #5a5a5a)',
+        '花束暖调': 'linear-gradient(135deg, #ffafcc, #ff85a1)',
+        '彩色负片': 'linear-gradient(135deg, #e76f51, #bc4749)',
+        '重庆森林': 'linear-gradient(135deg, #52b788, #1b4332)',
+        '蓝调空间': 'linear-gradient(135deg, #7b2cbf, #3a0ca3)',
+        '岛屿青雾': 'linear-gradient(135deg, #48cae4, #0096c7)',
+        '富士NN': 'linear-gradient(135deg, #90be6d, #52796f)',
+        '灰绿色调': 'linear-gradient(135deg, #9ca98b, #6b7a5a)'
     };
 
     // 文件名可能带 -f 后缀（如“日系1996-f.cube”），取其语义基名用于配色/描述匹配
