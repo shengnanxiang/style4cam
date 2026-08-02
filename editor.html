@@ -298,6 +298,18 @@
         }
         .preload-btn:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.25); }
         .preload-btn:disabled { opacity: 0.6; cursor: default; }
+        .sidebar-btn-row { display: flex; gap: 8px; }
+        .sidebar-btn-row .preload-btn { flex: 1; }
+        .update-rank-btn { background: rgba(255, 159, 67, 0.16); border-color: rgba(255, 159, 67, 0.4); color: #ffb86b; }
+        .update-rank-btn:hover { background: rgba(255, 159, 67, 0.28); }
+        .update-rank-status {
+            margin-top: 8px;
+            font-size: 11.5px;
+            line-height: 1.4;
+            color: rgba(255, 255, 255, 0.55);
+        }
+        .update-rank-status.is-ok { color: #4cd964; }
+        .update-rank-status.is-err { color: #ff6b6b; }
         .preload-progress { width: 100%; }
         .preload-bar {
             width: 100%;
@@ -452,6 +464,20 @@
         .cat-original .preset-badge { background: linear-gradient(135deg, #7f8c8d, #555555); }
         .cat-flash .preset-badge { background: linear-gradient(135deg, #f7dc6f, #f0b429); }
 
+        /* Ranking tier colors (from LUT ranking test) */
+        .cat-top10 .preset-badge { background: linear-gradient(135deg, #f1c40f, #e67e22); }
+        .cat-r11_15 .preset-badge { background: linear-gradient(135deg, #2ecc71, #27ae60); }
+        .cat-r16_20 .preset-badge { background: linear-gradient(135deg, #3498db, #2980b9); }
+        .cat-r21_26 .preset-badge { background: linear-gradient(135deg, #9b59b6, #8e44ad); }
+        .cat-r27_32 .preset-badge { background: linear-gradient(135deg, #7f8c8d, #576574); }
+
+        .category-title .tier-count {
+            color: var(--text-dim);
+            font-weight: 400;
+            font-size: 11px;
+            margin-left: 6px;
+        }
+
         /* Mobile */
         @media (max-width: 768px) {
             .toolbar { width: 52px; }
@@ -506,7 +532,11 @@
                 <div class="sidebar-title">风格</div>
                 <div class="sidebar-count" id="presetCount">0 presets</div>
             </div>
-            <button class="preload-btn" id="preloadBtn" type="button">预加载所有</button>
+            <div class="sidebar-btn-row">
+                <button class="preload-btn" id="preloadBtn" type="button">预加载所有</button>
+                <button class="preload-btn update-rank-btn" id="updateRankBtn" type="button">更新排名</button>
+            </div>
+            <div class="update-rank-status" id="updateRankStatus" hidden></div>
             <div class="preload-progress" id="preloadProgress" hidden>
                 <div class="preload-bar"><div class="preload-bar-fill" id="preloadBarFill"></div></div>
                 <div class="preload-meta">
@@ -524,8 +554,18 @@
 <script src="db.js"></script>
 <script>
     const LUT_BASE = '.';
+    // 所有 .cube 统一存放于该文件夹（不再按子目录分类）
+    let LUT_DIR = 'lut';
     let lutIndex = null;
     let categoryOrder = [];
+    // 分组仅用于展示排序，文件一律从 LUT_DIR 读取
+    let GROUP_LABELS = {};
+    let LUT_META = {}; // filename -> { rank, name }
+
+    // 分组 key 与文件名 -> 实际文件路径
+    function lutPath(filename) {
+        return LUT_DIR + '/' + filename;
+    }
 
     // 解析缓存：filename -> {size, table}，避免每次点击重复解析 .cube
     const lutParseCache = new Map();
@@ -539,10 +579,19 @@
 
     function getFirstStyleKey() {
         if (!categoryOrder.length) return null;
-        const firstCat = categoryOrder[0];
-        const files = lutIndex[firstCat] || [];
-        if (!files.length) return null;
-        return firstCat + '/' + files[0];
+        for (const key of categoryOrder) {
+            const files = lutIndex[key] || [];
+            if (files.length) return lutPath(files[0]);
+        }
+        return null;
+    }
+
+    // styleKey 形如 "lut/xxx.cube"，仅拆首个 '/'，避免文件名含 '/' 时出错
+    function splitStyleKey(styleKey) {
+        const i = styleKey.indexOf('/');
+        return i < 0
+            ? ['', styleKey]
+            : [styleKey.slice(0, i), styleKey.slice(i + 1)];
     }
 
     const DISPLAY_MAP = {
@@ -600,14 +649,24 @@
         '重庆森林': '#2d6a4f'
     };
 
+    // 文件名可能带 -f 后缀（如“日系1996-f.cube”），取其语义基名用于配色/描述匹配
+    function lutBaseName(filename) {
+        const meta = LUT_META[filename];
+        let base = meta && meta.name
+            ? meta.name
+            : filename.replace(/\.(cube|CUBE)$/, '');
+        return base.replace(/\s*\(f\)\s*$/, '').replace(/[-_]f$/i, '').trim();
+    }
+
     function getLutColor(category, filename) {
-        const base = filename.replace(/\.(cube|CUBE)$/, '');
+        const base = lutBaseName(filename);
         if (LUT_COLORS[base]) return LUT_COLORS[base];
         return 'linear-gradient(135deg, #95a5a6, #7f8c8d)';
     }
 
     function getCategoryTitle(key) {
         if (key === 'original') return '';
+        if (GROUP_LABELS[key]) return GROUP_LABELS[key];
         if (key === 'flash') return '风格列表';
         return CATEGORY_LABELS[key] || key;
     }
@@ -629,8 +688,11 @@
     };
 
     function getLutDesc(category, filename) {
-        const base = filename.replace(/\.(cube|CUBE)$/, '');
-        return LUT_DESC[base] || LUT_DESC[category] || '';
+        const base = lutBaseName(filename);
+        const meta = LUT_META[filename];
+        if (LUT_DESC[base]) return LUT_DESC[base];
+        if (meta && meta.rank) return '综合排名 第 ' + meta.rank + ' 名';
+        return LUT_DESC[category] || '';
     }
 
     const preview = document.getElementById('preview');
@@ -660,6 +722,244 @@
     let currentImageId = null;
     let currentImageName = 'image.jpg';
 
+    // ---- LUT 排名实时更新（直连排名站 Supabase，浏览器内重算 Bradley–Terry） ----
+    const RANK_SUPABASE_URL = 'https://jlknswztsbwiverydqcte.supabase.co';
+    const RANK_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imppa25zd3p0c2J3aXZlcnlkcWN0ZSIsInJvbGV0IjoiYW5vbiIsImlhdCI6MTc1MjQ0NDM2MywiZXhwIjoyMDY4MDEyMzYzfQ.VVTa9Jj1qfX0O8nU1w2D2XUQmTx43wUKlUZXXGZ1F4U';
+    const RANK_TEST_ID = 'v1-2025-Q4';
+    const RANK_TIERS = [10, 5, 5, 6, 6];         // 分组大小：Top10 / 11-15 / 16-20 / 21-26 / 27-32（共 32）
+    const RANK_STORAGE_KEY = 'style4cam.rankOverride';
+    const RANK_MAX_ITER = 1000;
+    const RANK_CONVERGE = 1e-9;
+
+    // l01–l32 的真实文件名（与磁盘一致）。displayName 用于匹配 lut-list.json 中的 name。
+    const LUT_FILE_BY_LID = {
+        l01: { name: '日系1996', file: '日系1996-f.cube' },
+        l02: { name: '交叉冲洗', file: '交叉冲洗.cube' },
+        l03: { name: '彩色负片100T', file: '彩色负片100T.cube' },
+        l04: { name: '摩卡', file: '摩卡-f.cube' },
+        l05: { name: '电影感', file: '电影感.cube' },
+        l06: { name: '霸王别姬·蓝', file: '霸王别姬-蓝.cube' },
+        l07: { name: '回忆录', file: '回忆录-f.cube' },
+        l08: { name: '彩色反转T64', file: '彩色反转T64.cube' },
+        l09: { name: '霸王别姬·红', file: '霸王别姬-红.cube' },
+        l10: { name: '人像琥珀提亮', file: '人像琥珀提亮.cube' },
+        l11: { name: '黑白老照片 2', file: '黑白老照片 2.cube' },
+        l12: { name: '怀旧绿', file: '怀旧绿-f.cube' },
+        l13: { name: '柏林之冬', file: '柏林之冬.cube' },
+        l14: { name: '蓝调时光', file: '蓝调时光-f.cube' },
+        l15: { name: '漂白旁路', file: '漂白旁路.cube' },
+        l16: { name: '奥林帕斯', file: '奥林帕斯.cube' },
+        l17: { name: '复古风', file: '复古风.cube' },
+        l18: { name: '黑白纪实', file: '黑白纪实.cube' },
+        l19: { name: '低饱和蓝晒', file: '低饱和蓝晒.cube' },
+        l20: { name: '千禧电影', file: '千禧电影.cube' },
+        l21: { name: '重庆森林 (f)', file: '重庆森林-f.cube' },
+        l22: { name: '蓝晒', file: '蓝晒-f.cube' },
+        l23: { name: '港味', file: '港味-f.cube' },
+        l24: { name: '柯达金', file: '柯达金.cube' },
+        l25: { name: '黑白老照片 1', file: '黑白老照片 1.cube' },
+        l26: { name: '花束暖调', file: '花束暖调-f.cube' },
+        l27: { name: '彩色负片', file: '彩色负片.cube' },
+        l28: { name: '重庆森林', file: '重庆森林.cube' },
+        l29: { name: '蓝调空间', file: '蓝调空间.cube' },
+        l30: { name: '岛屿青雾', file: '岛屿青雾-f.cube' },
+        l31: { name: '富士NN', file: '富士NN.cube' },
+        l32: { name: '灰绿色调', file: '灰绿色调-f.cube' }
+    };
+
+    function computeBradleyTerry(items, preferenceToWin) {
+        const n = items.length;
+        const ids = items.map(it => it.id);
+        const gamma = {};
+        ids.forEach(id => { gamma[id] = 1.0; });
+        // 累加胜场数与对手强度
+        const wins = {};
+        const denom = {};
+        ids.forEach(id => { wins[id] = 0; denom[id] = 0; });
+        items.forEach(a => {
+            items.forEach(b => {
+                if (a.id === b.id) return;
+                if (preferenceToWin(a, b)) wins[a.id] += 1;
+                denom[a.id] += gamma[b.id] / (gamma[a.id] + gamma[b.id]);
+            });
+        });
+        for (let iter = 0; iter < RANK_MAX_ITER; iter++) {
+            let maxDelta = 0;
+            ids.forEach(id => {
+                const newG = wins[id] / denom[id];
+                maxDelta = Math.max(maxDelta, Math.abs(newG - gamma[id]));
+                gamma[id] = newG;
+            });
+            if (maxDelta < RANK_CONVERGE) break;
+        }
+        const total = ids.reduce((s, id) => s + gamma[id], 0);
+        ids.forEach(id => { gamma[id] /= total; });
+        return gamma;
+    }
+
+    function applyTiers(rankedItems, tierSizes) {
+        const groups = [];
+        let idx = 0;
+        let t = 1;
+        for (const size of tierSizes) {
+            const slice = rankedItems.slice(idx, idx + size);
+            if (slice.length === 0) break;
+            groups.push({ tier: t, items: slice });
+            idx += size;
+            t += 1;
+        }
+        // 余下（不足一组）全部归入最后一组
+        if (idx < rankedItems.length) {
+            const last = groups[groups.length - 1];
+            if (last) last.items = last.items.concat(rankedItems.slice(idx));
+            else groups.push({ tier: t, items: rankedItems.slice(idx) });
+        }
+        return groups;
+    }
+
+    async function fetchRankJudgments() {
+        const url = RANK_SUPABASE_URL + '/rest/v1/judgments?test_id=eq.' +
+            encodeURIComponent(RANK_TEST_ID) + '&select=row_index,choice_a,choice_b,choice_c&order=row_index';
+        const resp = await fetch(url, {
+            headers: {
+                'apikey': RANK_SUPABASE_KEY,
+                'Authorization': 'Bearer ' + RANK_SUPABASE_KEY
+            }
+        });
+        if (!resp.ok) throw new Error('Supabase 请求失败：' + resp.status);
+        return await resp.json();
+    }
+
+    // 将 judgments 转为候选成绩，重算排名，返回与 lut-list.json 同构的分组对象
+    function buildRankGroups(judgments) {
+        const lids = Object.keys(LUT_FILE_BY_LID);
+        const lutItems = lids.map(lid => ({
+            id: lid,
+            name: LUT_FILE_BY_LID[lid].name,
+            file: LUT_FILE_BY_LID[lid].file,
+            scores: { A: 0, B: 0, C: 0 },
+            netWins: 0
+        }));
+        const byId = {};
+        lutItems.forEach(it => { byId[it.id] = it; });
+
+        for (const j of judgments) {
+            const a = byId[j.choice_a], b = byId[j.choice_b], c = byId[j.choice_c];
+            if (!a || !b || !c) continue;
+            a.scores.A += 1; b.scores.B += 1; c.scores.C += 1;
+        }
+        lutItems.forEach(it => {
+            it.netWins = it.scores.A * 2 + it.scores.B * 1 - (it.scores.C * 2 + it.scores.B * 1);
+        });
+
+        const gamma = computeBradleyTerry(lutItems, (x, y) => x.scores.A >= y.scores.A && x.scores.B >= y.scores.B);
+        lutItems.forEach(it => { it.strength = gamma[it.id]; });
+
+        const ranked = lutItems.slice().sort((p, q) => {
+            const d = q.strength - p.strength;
+            if (Math.abs(d) > 1e-9) return d;
+            return q.netWins - p.netWins;
+        });
+
+        const tierGroups = applyTiers(ranked, RANK_TIERS);
+        const groupMeta = [
+            { id: 'top10', label: 'Top 10' },
+            { id: 'r11_15', label: '11-15' },
+            { id: 'r16_20', label: '16-20' },
+            { id: 'r21_26', label: '21-26' },
+            { id: 'r27_32', label: '27-32' }
+        ];
+        const groups = tierGroups.map((g, i) => {
+            const meta = groupMeta[i] || { id: 'tier' + (i + 1), label: 'Tier ' + (i + 1) };
+            return {
+                id: meta.id,
+                label: meta.label,
+                luts: g.items.map(it => ({
+                    name: it.name,
+                    file: it.file
+                }))
+            };
+        });
+        // rank 为全局连续序号
+        let r = 0;
+        groups.forEach(g => g.luts.forEach(l => { r += 1; l.rank = r; }));
+        return groups;
+    }
+
+    async function refreshRanking() {
+        const btn = document.getElementById('updateRankBtn');
+        const statusEl = document.getElementById('updateRankStatus');
+        btn.disabled = true;
+        btn.textContent = '更新中…';
+        statusEl.hidden = false;
+        statusEl.className = 'update-rank-status';
+        statusEl.textContent = '正在从排名站拉取最新数据…';
+        try {
+            const judgments = await fetchRankJudgments();
+            if (!Array.isArray(judgments) || judgments.length === 0) {
+                throw new Error('未获取到任何评判数据');
+            }
+            const groups = buildRankGroups(judgments);
+            const payload = {
+                dir: LUT_DIR,
+                source: 'https://lutrankingtest-3v7125w.maozi.io/result.html',
+                updated: new Date().toISOString().slice(0, 10),
+                groups: groups
+            };
+            localStorage.setItem(RANK_STORAGE_KEY, JSON.stringify(payload));
+            applyRankPayload(payload, true);
+            const t = new Date().toLocaleString('zh-CN', { hour12: false });
+            statusEl.className = 'update-rank-status is-ok';
+            statusEl.textContent = '已更新至最新排名（' + judgments.length + ' 条评判，' + t + '）';
+        } catch (e) {
+            console.error(e);
+            statusEl.className = 'update-rank-status is-err';
+            statusEl.textContent = '更新失败：' + (e && e.message ? e.message : e) + '（仍使用已加载的排名）';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '更新排名';
+        }
+    }
+
+    // 把分组 payload 应用到内存并重建 UI（overridden=true 表示来自实时更新）
+    function applyRankPayload(data, overridden) {
+        LUT_DIR = data.dir || LUT_DIR;
+        lutIndex = {};
+        categoryOrder = [];
+        GROUP_LABELS = {};
+        LUT_META = {};
+        for (const g of (data.groups || [])) {
+            const key = g.id;
+            categoryOrder.push(key);
+            GROUP_LABELS[key] = g.label || key;
+            lutIndex[key] = (g.luts || []).map(item => {
+                LUT_META[item.file] = { rank: item.rank, name: item.name };
+                return item.file;
+            });
+        }
+        buildPresets();
+        refreshPreloadState();
+        if (overridden) {
+            document.getElementById('presetCount').textContent =
+                categoryOrder.reduce((s, k) => s + (lutIndex[k] ? lutIndex[k].length : 0), 0) + ' presets · 实时';
+        }
+    }
+
+    function loadRankOverride() {
+        try {
+            const raw = localStorage.getItem(RANK_STORAGE_KEY);
+            if (!raw) return false;
+            const data = JSON.parse(raw);
+            if (!data || !Array.isArray(data.groups) || data.groups.length === 0) return false;
+            applyRankPayload(data, true);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    document.getElementById('updateRankBtn').addEventListener('click', refreshRanking);
+
     // ---- URL params ----
     function getUrlParam(name) {
         const params = new URLSearchParams(location.search);
@@ -668,17 +968,12 @@
 
     async function loadLutIndex() {
         try {
-            const resp = await fetch('lut-list.json?v=9');
+            const resp = await fetch('lut-list.json?v=10');
             if (!resp.ok) throw new Error('Failed to load lut-list.json');
             const data = await resp.json();
-            lutIndex = {};
-            const raw = data.categories || {};
-            for (const key of Object.keys(raw)) {
-                lutIndex[key.toLowerCase()] = raw[key];
-            }
-            categoryOrder = (data.order || Object.keys(lutIndex)).map(k => k.toLowerCase());
-            buildPresets();
-            refreshPreloadState();
+            applyRankPayload(data, false);
+            // 若有本地实时更新缓存，则覆盖快照
+            loadRankOverride();
         } catch (e) {
             console.error('Failed to load lut-list.json:', e);
             presetsScroll.innerHTML = '<div class="empty-state">无法加载预设列表</div>';
@@ -723,10 +1018,13 @@
     let preloadController = null;
 
     function allLutUrls() {
+        const seen = new Set();
         const urls = [];
         for (const key of categoryOrder) {
             for (const f of (lutIndex[key] || [])) {
-                urls.push(lutAbsUrl(key + '/' + f));
+                if (seen.has(f)) continue;
+                seen.add(f);
+                urls.push(lutAbsUrl(lutPath(f)));
             }
         }
         return urls;
@@ -819,10 +1117,12 @@
     }
 
     async function loadLutContent(category, filename) {
-        return await fetchLutFile(category + '/' + filename);
+        return await fetchLutFile(lutPath(filename));
     }
 
     function formatLutName(category, filename) {
+        const meta = LUT_META[filename];
+        if (meta && meta.name) return meta.name;
         const base = filename.replace(/\.(cube|CUBE)$/, '');
         if (DISPLAY_MAP[category] && DISPLAY_MAP[category][base]) {
             return DISPLAY_MAP[category][base];
@@ -977,7 +1277,7 @@
         for (const key of categoryOrder) {
             for (const fname of (lutIndex[key] || [])) {
                 if (token !== prerenderToken) return; // 图片已切换，中止后台任务
-                const styleKey = key + '/' + fname;
+                const styleKey = lutPath(fname);
                 const rk = imgId + '::' + styleKey;
                 if (renderCache.has(rk)) continue; // 已渲染（如用户已点过）
                 try {
@@ -1004,7 +1304,7 @@
 
         let total = 0;
         const categories = (categoryOrder || Object.keys(lutIndex)).map(key => {
-            return { key, label: CATEGORY_LABELS[key] || key };
+            return { key, label: getCategoryTitle(key) };
         });
 
         const allCategories = categories;
@@ -1012,21 +1312,22 @@
         for (const cat of allCategories) {
             const categoryEl = document.createElement('div');
             categoryEl.className = 'preset-category cat-' + cat.key.replace(/\s+/g, '-');
+            const files = lutIndex[cat.key] || [];
+            if (!files.length) continue;
+            total += files.length;
+
             const titleText = getCategoryTitle(cat.key);
             if (titleText) {
-                categoryEl.innerHTML = '<div class="category-title">' + titleText + '</div>';
+                categoryEl.innerHTML = '<div class="category-title">' + titleText
+                    + '<span class="tier-count">' + files.length + '</span></div>';
             }
 
             const list = document.createElement('div');
             list.className = 'preset-list';
 
-            const files = lutIndex[cat.key] || [];
-            if (!files.length) continue;
-            total += files.length;
-
             for (const fname of files) {
                 const display = formatLutName(cat.key, fname);
-                const key = cat.key + '/' + fname;
+                const key = lutPath(fname);
                 const item = document.createElement('div');
                 item.className = 'preset-item';
                 if (selectedLutKey === key) item.classList.add('selected');
@@ -1050,7 +1351,7 @@
     }
 
     async function selectLut(category, filename) {
-        currentStyleKey = category + '/' + filename;
+        currentStyleKey = lutPath(filename);
         showOriginal = false;
         updateOriginalSwitch();
         selectedLutKey = currentStyleKey;
@@ -1061,7 +1362,7 @@
 
         try {
             const text = await loadLutContent(category, filename);
-            const pkey = category + '/' + filename;
+            const pkey = lutPath(filename);
             let lut = lutParseCache.get(pkey);
             if (!lut) {
                 lut = parseCubeFile(text);
@@ -1095,8 +1396,15 @@
             render();
         } else {
             if (!currentStyleKey) currentStyleKey = getFirstStyleKey();
-            const [cat, fname] = currentStyleKey.split('/');
-            selectLut(cat, fname);
+            if (currentStyleKey) {
+                const [cat, fname] = splitStyleKey(currentStyleKey);
+                selectLut(cat, fname);
+            } else {
+                selectedLutKey = null;
+                lutData = null;
+                buildPresets();
+                render();
+            }
         }
     }
 
@@ -1114,7 +1422,7 @@
         showOriginal = false;
         updateOriginalSwitch();
         if (currentStyleKey) {
-            const [cat, fname] = currentStyleKey.split('/');
+            const [cat, fname] = splitStyleKey(currentStyleKey);
             selectLut(cat, fname);
         } else {
             selectedLutKey = null;
