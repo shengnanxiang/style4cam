@@ -845,17 +845,29 @@
     }
 
     async function fetchRankJudgments() {
-        // 与排名站一致：select=* 拉取 judgments 全字段（lut_a/lut_b/winner/voter_id...）
-        const url = RANK_SUPABASE_URL + '/rest/v1/judgments?test_id=eq.' +
-            encodeURIComponent(RANK_TEST_ID) + '&select=*&order=lut_a';
-        const resp = await fetch(url, {
-            headers: {
-                'apikey': RANK_SUPABASE_KEY,
-                'Authorization': 'Bearer ' + RANK_SUPABASE_KEY
-            }
-        });
-        if (!resp.ok) throw new Error('Supabase 请求失败：' + resp.status);
-        return await resp.json();
+        // Supabase 项目默认 db_max_rows=1000，单次最多返回 1000 行。
+        // 这里循环分页（offset 递增），确保超过 1000 条的评判也能全部纳入排名。
+        const PAGE = 1000;
+        let all = [];
+        let offset = 0;
+        while (true) {
+            const url = RANK_SUPABASE_URL + '/rest/v1/judgments?test_id=eq.' +
+                encodeURIComponent(RANK_TEST_ID) + '&select=*&order=lut_a&limit=' +
+                PAGE + '&offset=' + offset;
+            const resp = await fetch(url, {
+                headers: {
+                    'apikey': RANK_SUPABASE_KEY,
+                    'Authorization': 'Bearer ' + RANK_SUPABASE_KEY
+                }
+            });
+            if (!resp.ok) throw new Error('Supabase 请求失败：' + resp.status);
+            const rows = await resp.json();
+            if (!Array.isArray(rows) || rows.length === 0) break;
+            all = all.concat(rows);
+            if (rows.length < PAGE) break;   // 已到末页
+            offset += rows.length;
+        }
+        return all;
     }
 
     // 将 judgments 转为候选成绩，复刻排名站算法重算排名，返回与 lut-list.json 同构的分组对象
