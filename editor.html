@@ -1,4 +1,4 @@
-<!-- build: 2026-08-03 standard-BT (correct pairCounts denominator + pagination) -->
+<!-- build: 2026-08-03 fix-lID-mapping (align LUT_FILE_BY_LID with ranking site config.js) -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -756,40 +756,41 @@
     const RANK_MAX_ITER = 1000;
     const RANK_CONVERGE = 1e-9;
 
-    // l01–l32 的真实文件名（与磁盘一致）。displayName 用于匹配 lut-list.json 中的 name。
+    // l01–l32 的 lID→名称映射，严格与排名站 config.js 的 luts 数组保持一致。
+    // 文件名来自磁盘上已有的 .cube 文件。
     const LUT_FILE_BY_LID = {
-        l01: { name: '日系1996', file: '日系1996-f.cube' },
-        l02: { name: '交叉冲洗', file: '交叉冲洗.cube' },
-        l03: { name: '彩色负片100T', file: '彩色负片100T.cube' },
-        l04: { name: '摩卡', file: '摩卡-f.cube' },
-        l05: { name: '电影感', file: '电影感.cube' },
-        l06: { name: '霸王别姬·蓝', file: '霸王别姬-蓝.cube' },
-        l07: { name: '回忆录', file: '回忆录-f.cube' },
-        l08: { name: '彩色反转T64', file: '彩色反转T64.cube' },
-        l09: { name: '霸王别姬·红', file: '霸王别姬-红.cube' },
-        l10: { name: '人像琥珀提亮', file: '人像琥珀提亮.cube' },
-        l11: { name: '黑白老照片 2', file: '黑白老照片 2.cube' },
-        l12: { name: '怀旧绿', file: '怀旧绿-f.cube' },
-        l13: { name: '柏林之冬', file: '柏林之冬.cube' },
-        l14: { name: '蓝调时光', file: '蓝调时光-f.cube' },
-        l15: { name: '漂白旁路', file: '漂白旁路.cube' },
-        l16: { name: '奥林帕斯', file: '奥林帕斯.cube' },
-        l17: { name: '复古风', file: '复古风.cube' },
-        l18: { name: '黑白纪实', file: '黑白纪实.cube' },
-        l19: { name: '低饱和蓝晒', file: '低饱和蓝晒.cube' },
-        l20: { name: '千禧电影', file: '千禧电影.cube' },
-        l21: { name: '重庆森林 (f)', file: '重庆森林-f.cube' },
-        l22: { name: '蓝晒', file: '蓝晒-f.cube' },
-        l23: { name: '港味', file: '港味-f.cube' },
-        l24: { name: '柯达金', file: '柯达金.cube' },
-        l25: { name: '黑白老照片 1', file: '黑白老照片 1.cube' },
-        l26: { name: '花束暖调', file: '花束暖调-f.cube' },
-        l27: { name: '彩色负片', file: '彩色负片.cube' },
-        l28: { name: '重庆森林', file: '重庆森林.cube' },
-        l29: { name: '蓝调空间', file: '蓝调空间.cube' },
-        l30: { name: '岛屿青雾', file: '岛屿青雾-f.cube' },
-        l31: { name: '富士NN', file: '富士NN.cube' },
-        l32: { name: '灰绿色调', file: '灰绿色调-f.cube' }
+        l01: { name: '人像琥珀提亮', file: '人像琥珀提亮.cube' },
+        l02: { name: '奥林帕斯',     file: '奥林帕斯.cube' },
+        l03: { name: '富士NN',       file: '富士NN.cube' },
+        l04: { name: '日系1996',     file: '日系1996-f.cube' },
+        l05: { name: '柏林之冬',     file: '柏林之冬.cube' },
+        l06: { name: '柯达金',       file: '柯达金.cube' },
+        l07: { name: '港味',         file: '港味-f.cube' },
+        l08: { name: '黑白纪实',     file: '黑白纪实.cube' },
+        l09: { name: '低饱和蓝晒',   file: '低饱和蓝晒.cube' },
+        l10: { name: '彩色反转T64',  file: '彩色反转T64.cube' },
+        l11: { name: '彩色负片100T', file: '彩色负片100T.cube' },
+        l12: { name: '彩色负片',     file: '彩色负片.cube' },
+        l13: { name: '摩卡',         file: '摩卡-f.cube' },
+        l14: { name: '灰绿色调',     file: '灰绿色调-f.cube' },
+        l15: { name: '蓝晒',         file: '蓝晒-f.cube' },
+        l16: { name: '蓝调时光',     file: '蓝调时光-f.cube' },
+        l17: { name: '蓝调空间',     file: '蓝调空间.cube' },
+        l18: { name: '回忆录',       file: '回忆录-f.cube' },
+        l19: { name: '复古风',       file: '复古风.cube' },
+        l20: { name: '怀旧绿',       file: '怀旧绿-f.cube' },
+        l21: { name: '黑白老照片 1', file: '黑白老照片 1.cube' },
+        l22: { name: '黑白老照片 2', file: '黑白老照片 2.cube' },
+        l23: { name: '交叉冲洗',     file: '交叉冲洗.cube' },
+        l24: { name: '岛屿青雾',     file: '岛屿青雾-f.cube' },
+        l25: { name: '漂白旁路',     file: '漂白旁路.cube' },
+        l26: { name: '花束暖调',     file: '花束暖调-f.cube' },
+        l27: { name: '千禧电影',     file: '千禧电影.cube' },
+        l28: { name: '电影感',       file: '电影感.cube' },
+        l29: { name: '重庆森林',     file: '重庆森林.cube' },
+        l30: { name: '重庆森林 (f)', file: '重庆森林-f.cube' },
+        l31: { name: '霸王别姬·红', file: '霸王别姬-红.cube' },
+        l32: { name: '霸王别姬·蓝', file: '霸王别姬-蓝.cube' }
     };
 
     // 标准 Bradley-Terry MM 算法（与排名站已验证实现完全一致）
