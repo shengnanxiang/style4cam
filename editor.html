@@ -745,11 +745,13 @@
     let currentImageId = null;
     let currentImageName = 'image.jpg';
 
-    // ---- LUT 排名实时更新（直连排名站 Supabase，浏览器内重算 Bradley–Terry） ----
-    const RANK_SUPABASE_URL = 'https://jlknswztsbwiverydqcte.supabase.co';
-    const RANK_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imppa25zd3p0c2J3aXZlcnlkcWN0ZSIsInJvbGV0IjoiYW5vbiIsImlhdCI6MTc1MjQ0NDM2MywiZXhwIjoyMDY4MDEyMzYzfQ.VVTa9Jj1qfX0O8nU1w2D2XUQmTx43wUKlUZXXGZ1F4U';
+    // ---- LUT 排名实时更新（直连排名站 Supabase，复刻排名站算法重算） ----
+    // 配置与排名站 https://lutrankingtest-3v7125w.maozi.io/js/config.js 保持一致
+    const RANK_SUPABASE_URL = 'https://tdvhftiincchvtgnkbzh.supabase.co';
+    const RANK_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRkdmhmdGlpbmNjaHZ0Z25rYnpoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU1ODM3OTQsImV4cCI6MjEwMTE1OTc5NH0.tJq-bUcR7EB2pSCrbp3T_8NetOICeGIAhTH4IK7uyog';
     const RANK_TEST_ID = 'v1-2025-Q4';
-    const RANK_TIERS = [10, 5, 5, 6, 6];         // 分组大小：Top10 / 11-15 / 16-20 / 21-26 / 27-32（共 32）
+    const RANK_TOP_N = 10;
+    const RANK_TIERS = [5, 5, 6, 6];            // 剩余 22 个按 5/5/6/6 分四档（与排名站一致）
     const RANK_STORAGE_KEY = 'style4cam.rankOverride';
     const RANK_MAX_ITER = 1000;
     const RANK_CONVERGE = 1e-9;
@@ -790,34 +792,36 @@
         l32: { name: '灰绿色调', file: '灰绿色调-f.cube' }
     };
 
-    function computeBradleyTerry(items, preferenceToWin) {
-        const n = items.length;
-        const ids = items.map(it => it.id);
-        const gamma = {};
-        ids.forEach(id => { gamma[id] = 1.0; });
-        // 累加胜场数与对手强度
-        const wins = {};
-        const denom = {};
-        ids.forEach(id => { wins[id] = 0; denom[id] = 0; });
-        items.forEach(a => {
-            items.forEach(b => {
-                if (a.id === b.id) return;
-                if (preferenceToWin(a, b)) wins[a.id] += 1;
-                denom[a.id] += gamma[b.id] / (gamma[a.id] + gamma[b.id]);
-            });
-        });
-        for (let iter = 0; iter < RANK_MAX_ITER; iter++) {
+    // 复刻排名站 bradleyTerry（MM 算法）：输入 { id: {wins,losses} }，输出 strength（越大越强）
+    function computeBradleyTerry(counts, maxIter, tol) {
+        maxIter = maxIter || RANK_MAX_ITER;
+        tol = tol || RANK_CONVERGE;
+        const ids = Object.keys(counts);
+        const N = ids.length;
+        if (N === 0) return {};
+        let pi = {};
+        ids.forEach(id => pi[id] = 1);
+        for (let it = 0; it < maxIter; it++) {
+            const newPi = {};
             let maxDelta = 0;
-            ids.forEach(id => {
-                const newG = wins[id] / denom[id];
-                maxDelta = Math.max(maxDelta, Math.abs(newG - gamma[id]));
-                gamma[id] = newG;
-            });
-            if (maxDelta < RANK_CONVERGE) break;
+            for (const i of ids) {
+                const numer = counts[i].wins;
+                let denom = 0;
+                for (const j of ids) {
+                    if (i === j) continue;
+                    denom += (counts[i].wins + counts[i].losses) / (pi[i] + pi[j]);
+                }
+                if (denom === 0) { newPi[i] = pi[i]; continue; }
+                newPi[i] = numer / denom;
+                maxDelta = Math.max(maxDelta, Math.abs(newPi[i] - pi[i]));
+            }
+            // 归一化（防止漂移）
+            const mean = ids.reduce((s, id) => s + newPi[id], 0) / N;
+            for (const id of ids) newPi[id] /= mean;
+            pi = newPi;
+            if (maxDelta < tol) break;
         }
-        const total = ids.reduce((s, id) => s + gamma[id], 0);
-        ids.forEach(id => { gamma[id] /= total; });
-        return gamma;
+        return pi;
     }
 
     function applyTiers(rankedItems, tierSizes) {
@@ -841,8 +845,9 @@
     }
 
     async function fetchRankJudgments() {
+        // 与排名站一致：select=* 拉取 judgments 全字段（lut_a/lut_b/winner/voter_id...）
         const url = RANK_SUPABASE_URL + '/rest/v1/judgments?test_id=eq.' +
-            encodeURIComponent(RANK_TEST_ID) + '&select=row_index,choice_a,choice_b,choice_c&order=row_index';
+            encodeURIComponent(RANK_TEST_ID) + '&select=*&order=lut_a';
         const resp = await fetch(url, {
             headers: {
                 'apikey': RANK_SUPABASE_KEY,
@@ -853,30 +858,42 @@
         return await resp.json();
     }
 
-    // 将 judgments 转为候选成绩，重算排名，返回与 lut-list.json 同构的分组对象
+    // 将 judgments 转为候选成绩，复刻排名站算法重算排名，返回与 lut-list.json 同构的分组对象
     function buildRankGroups(judgments) {
         const lids = Object.keys(LUT_FILE_BY_LID);
+        const byId = {};
+        lids.forEach(lid => { byId[lid] = { wins: 0, losses: 0 }; });
+
+        // 复刻排名站 aggregate：按 voter_id|lut_a|lut_b 去重，统计胜/负/平
+        const seen = new Set();
+        for (const j of (judgments || [])) {
+            const a = j.lut_a, b = j.lut_b, w = j.winner;
+            if (!a || !b) continue;
+            if (!byId[a] || !byId[b]) continue;          // 仅统计已知 LUT
+            const k = (j.voter_id || '?') + '|' + a + '|' + b;
+            if (seen.has(k)) continue;
+            seen.add(k);
+            if (w === 'tie') {
+                // 平局双方各计一次胜与负（BT 中视为互相牵制）
+                byId[a].wins += 1; byId[a].losses += 1;
+                byId[b].wins += 1; byId[b].losses += 1;
+            } else if (w === a) {
+                byId[a].wins += 1; byId[b].losses += 1;
+            } else if (w === b) {
+                byId[b].wins += 1; byId[a].losses += 1;
+            }
+        }
+
+        // 复刻排名站 bradleyTerry（MM 算法，输入 {wins,losses}）
+        const strength = computeBradleyTerry(byId);
+
         const lutItems = lids.map(lid => ({
             id: lid,
             name: LUT_FILE_BY_LID[lid].name,
             file: LUT_FILE_BY_LID[lid].file,
-            scores: { A: 0, B: 0, C: 0 },
-            netWins: 0
+            netWins: byId[lid].wins - byId[lid].losses,
+            strength: strength[lid] || 0
         }));
-        const byId = {};
-        lutItems.forEach(it => { byId[it.id] = it; });
-
-        for (const j of judgments) {
-            const a = byId[j.choice_a], b = byId[j.choice_b], c = byId[j.choice_c];
-            if (!a || !b || !c) continue;
-            a.scores.A += 1; b.scores.B += 1; c.scores.C += 1;
-        }
-        lutItems.forEach(it => {
-            it.netWins = it.scores.A * 2 + it.scores.B * 1 - (it.scores.C * 2 + it.scores.B * 1);
-        });
-
-        const gamma = computeBradleyTerry(lutItems, (x, y) => x.scores.A >= y.scores.A && x.scores.B >= y.scores.B);
-        lutItems.forEach(it => { it.strength = gamma[it.id]; });
 
         const ranked = lutItems.slice().sort((p, q) => {
             const d = q.strength - p.strength;
@@ -884,7 +901,10 @@
             return q.netWins - p.netWins;
         });
 
-        const tierGroups = applyTiers(ranked, RANK_TIERS);
+        // 分档：Top N + 余下按 tiers 分区（与排名站 ranking 配置一致）
+        const head = ranked.slice(0, RANK_TOP_N);
+        const rest = ranked.slice(RANK_TOP_N);
+        const tierGroups = [{ items: head }].concat(applyTiers(rest, RANK_TIERS));
         const groupMeta = [
             { id: 'top10', label: 'Top 10' },
             { id: 'r11_15', label: '11-15' },
@@ -897,7 +917,7 @@
             return {
                 id: meta.id,
                 label: meta.label,
-                luts: g.items.map(it => ({
+                luts: g.map(it => ({
                     name: it.name,
                     file: it.file
                 }))
