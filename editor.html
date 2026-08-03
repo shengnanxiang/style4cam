@@ -1,3 +1,4 @@
+<!-- build: 2026-08-03 ranking-v2 (auto refresh ranking on load) -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -996,10 +997,24 @@
             applyRankPayload(data, false);
             // 若有本地实时更新缓存，则覆盖快照
             loadRankOverride();
+            // 页面加载时自动拉取一次最新排名（每日至多一次，避免重复请求）
+            autoRefreshRankingOnce();
         } catch (e) {
             console.error('Failed to load lut-list.json:', e);
             presetsScroll.innerHTML = '<div class="empty-state">无法加载预设列表</div>';
         }
+    }
+
+    // 每日自动同步一次排名：用 localStorage 记录上次同步日期
+    function autoRefreshRankingOnce() {
+        try {
+            const today = new Date().toISOString().slice(0, 10);
+            const last = localStorage.getItem(RANK_STORAGE_KEY + '.autoDate');
+            if (last === today) return; // 今天已自动同步过
+            refreshRanking().finally(() => {
+                localStorage.setItem(RANK_STORAGE_KEY + '.autoDate', today);
+            });
+        } catch (e) { /* 忽略，不影响主流程 */ }
     }
 
     loadLutIndex();
