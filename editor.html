@@ -200,6 +200,19 @@
             cursor: pointer;
         }
         .preview:not(.has-image) .original-toggle { display: none; }
+        .leak-reroll {
+            font-size: 13px;
+            color: var(--text);
+            letter-spacing: 0.04em;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 999px;
+            padding: 4px 10px;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+            white-space: nowrap;
+        }
+        .leak-reroll:hover { background: rgba(255, 255, 255, 0.2); color: var(--accent); }
         .original-toggle-text {
             font-size: 13px;
             color: var(--text-muted);
@@ -563,6 +576,7 @@
             <button type="button" class="switch" id="originalSwitch" role="switch" aria-checked="false">
                 <span class="switch-knob"></span>
             </button>
+            <button type="button" class="leak-reroll" id="leakRerollBtn" title="换个漏光" hidden>🎲 换漏光</button>
         </div>
         <input type="file" id="imageInput" accept="image/*">
     </div>
@@ -802,6 +816,7 @@
     const preloadCancel = document.getElementById('preloadCancel');
     const originalToggle = document.getElementById('originalToggle');
     const originalSwitch = document.getElementById('originalSwitch');
+    const leakRerollBtn = document.getElementById('leakRerollBtn');
 
     let sourceImage = null;
     let lutData = null;
@@ -814,6 +829,8 @@
     let currentGrainKey = 'none';
     let currentLightAlg = null;
     let currentGrainAlg = null;
+    // 复古漏光的随机种子（位置/光带方向/强度），选中 leak 时生成，🎲 可重掷
+    let leakSeed = null;
 
     // ---- LUT 排名实时更新（直连排名站 Supabase，复刻排名站算法重算） ----
     // 配置与排名站 https://lutrankingtest-3v7125w.maozi.io/js/config.js 保持一致
@@ -1388,23 +1405,27 @@
 
     // ---- 光影算法（方案B：基于亮度与空间的“重打光”近似） ----
 
-    // 复古漏光：暖色光斑由一侧边缘漫入，按 screen 混合；叠加轻微整体暖移。
-    function applyLightRetroLeak(px, w, h) {
-        const cx = w * 0.5, cy = h * 0.42;
-        // 漏光光晕中心偏向左侧偏上
-        const lx = w * 0.18, ly = h * 0.22;
+    // 复古漏光：暖色光斑由某侧边缘漫入（位置/光带方向/强度由 seed 随机决定），按 screen 混合。
+    // seed 为 null 时退回固定中心（左上方），保证基础可用。
+    function applyLightRetroLeak(px, w, h, seed) {
+        const s = seed || { lxp: 0.18, lyp: 0.22, ang: -Math.PI * 0.75, bandOff: 0, amp: 1 };
+        const lx = w * s.lxp;
+        const ly = h * s.lyp;
         const maxd = Math.sqrt(w * w + h * h);
+        const amp = s.amp;
+        const ax = Math.cos(s.ang), ay = Math.sin(s.ang);
         for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
                 const i = (y * w + x) * 4;
-                // 光晕强度：近光源强，并叠加一道斜向边缘光带
+                // 光晕强度：近光源强
                 const d = Math.sqrt((x - lx) * (x - lx) + (y - ly) * (y - ly));
                 let glow = 1 - d / (maxd * 0.62);
                 glow = Math.max(0, glow);
                 glow = glow * glow;
-                // 顶部/左侧漫入的暖光带
-                const band = Math.max(0, 1 - (x / w) * 1.6) * Math.max(0, 1 - (y / h) * 1.4);
-                const intensity = Math.min(1, glow * 0.85 + band * 0.5);
+                // 沿 seed 方向的暖光带：投影到光带轴，偏离 bandOff 越近越强
+                const proj = ((x / w) - 0.5) * ax + ((y / h) - 0.5) * ay;
+                const band = Math.max(0, 1 - Math.abs(proj - s.bandOff) * 2.2);
+                const intensity = Math.min(1, glow * 0.85 * amp + band * 0.5 * amp);
                 // 暖色光（橙金），screen 混合
                 const r = px[i], g = px[i + 1], b = px[i + 2];
                 const lr = 255, lg = 170, lb = 80;
@@ -1416,6 +1437,22 @@
                 px[i + 2] = Math.min(255, nb);
             }
         }
+    }
+
+    // 生成一个随机漏光种子：光源落在某边/角，光带方向随机，强度抖动。
+    function makeLeakSeed() {
+        const spots = [
+            [0.12, 0.15], [0.88, 0.15], [0.12, 0.85], [0.88, 0.85],
+            [0.5, 0.10], [0.5, 0.90], [0.10, 0.5], [0.90, 0.5]
+        ];
+        const c = spots[Math.floor(Math.random() * spots.length)];
+        return {
+            lxp: Math.min(0.95, Math.max(0.05, c[0] + (Math.random() - 0.5) * 0.12)),
+            lyp: Math.min(0.95, Math.max(0.05, c[1] + (Math.random() - 0.5) * 0.12)),
+            ang: Math.random() * Math.PI * 2,
+            bandOff: (Math.random() - 0.5) * 0.5,
+            amp: 0.85 + Math.random() * 0.3
+        };
     }
 
     // 胶片暗角：径向压暗四角、轻微提升中心对比，营造镜头暗角。
@@ -1519,7 +1556,7 @@
 
     function applyLight(px, w, h, alg) {
         if (!alg) return;
-        if (alg === 'retroLeak') applyLightRetroLeak(px, w, h);
+        if (alg === 'retroLeak') applyLightRetroLeak(px, w, h, leakSeed);
         else if (alg === 'filmVignette') applyLightFilmVignette(px, w, h);
         else if (alg === 'charmGlow') applyLightCharmGlow(px, w, h);
         else if (alg === 'coolFill') applyLightCoolFill(px, w, h);
@@ -1585,9 +1622,19 @@
     }
 
     function renderCacheKey() {
+        let lightPart = currentLightKey || 'none';
+        if (lightPart === 'leak' && leakSeed) {
+            // 把随机种子编码进 key，使不同漏光形态互不覆盖且可命中缓存
+            lightPart = 'leak@'
+                + leakSeed.lxp.toFixed(3) + ','
+                + leakSeed.lyp.toFixed(3) + ','
+                + leakSeed.ang.toFixed(3) + ','
+                + leakSeed.bandOff.toFixed(3) + ','
+                + leakSeed.amp.toFixed(3);
+        }
         return (currentImageId || 'img') + '::'
             + (selectedLutKey || 'original') + '::'
-            + (currentLightKey || 'none') + '::'
+            + lightPart + '::'
             + (currentGrainKey || 'none');
     }
 
@@ -1798,9 +1845,26 @@
         currentLightKey = key;
         const def = EFFECTS.light.find(e => e.key === key);
         currentLightAlg = def ? def.alg : null;
+        // 复古漏光：仅在首次选中（无种子）时随机一次；切走其他效果则清空种子
+        if (key === 'leak') {
+            if (!leakSeed) leakSeed = makeLeakSeed();
+        } else {
+            leakSeed = null;
+        }
         const instant = renderCache.has(renderCacheKey());
         if (!instant) loadingOverlay.classList.add('visible');
         buildLightList();
+        updateLeakRerollBtn();
+        render();
+        loadingOverlay.classList.remove('visible');
+    }
+
+    // 重掷复古漏光：生成新随机种子并重新渲染（仅 leak 有效）
+    async function rerollLeak() {
+        if (currentLightKey !== 'leak') return;
+        leakSeed = makeLeakSeed();
+        const instant = renderCache.has(renderCacheKey());
+        if (!instant) loadingOverlay.classList.add('visible');
         render();
         loadingOverlay.classList.remove('visible');
     }
@@ -1823,10 +1887,16 @@
         originalSwitch.setAttribute('aria-checked', showOriginal ? 'true' : 'false');
     }
 
+    // 仅当选中「复古漏光」时显示「🎲 换漏光」按钮
+    function updateLeakRerollBtn() {
+        leakRerollBtn.hidden = !(currentLightKey === 'leak' && !showOriginal);
+    }
+
     // 原图开关：on=显示纯原图（关闭风格+光影+颗粒），off=恢复当前三维选择
     function setShowOriginal(on) {
         showOriginal = on;
         updateOriginalSwitch();
+        updateLeakRerollBtn();
         if (on) {
             selectedLutKey = null;
             lutData = null;
@@ -1962,6 +2032,10 @@
     originalToggle.addEventListener('click', (e) => {
         e.stopPropagation();
         setShowOriginal(!showOriginal);
+    });
+    leakRerollBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        rerollLeak();
     });
     preloadBtn.addEventListener('click', preloadAll);
     preloadCancel.addEventListener('click', cancelPreload);
