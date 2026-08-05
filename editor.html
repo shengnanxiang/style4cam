@@ -447,6 +447,50 @@
             transform: scale(1);
         }
 
+        /* ---- Tabs (风格 / 光影 / 颗粒) ---- */
+        .tabs {
+            display: flex;
+            gap: 6px;
+            padding: 14px 14px 0;
+            flex: 0 0 auto;
+        }
+        .tab {
+            flex: 1 1 0;
+            padding: 9px 0;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-dim);
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border);
+            border-bottom: none;
+            border-radius: 9px 9px 0 0;
+            cursor: pointer;
+            transition: color 0.15s, background 0.15s;
+        }
+        .tab:hover { color: var(--text); }
+        .tab.active {
+            color: var(--accent);
+            background: var(--panel-bg);
+            box-shadow: inset 0 2px 0 var(--accent);
+        }
+        .tab-panel {
+            display: none;
+            flex-direction: column;
+            min-height: 0;
+            flex: 1 1 auto;
+        }
+        .tab-panel.active { display: flex; }
+        .panel-btn-row {
+            padding: 12px 14px;
+            border-top: 1px solid var(--border);
+            flex: 0 0 auto;
+        }
+        .panel-btn-row .preload-btn { width: 100%; }
+        .light-badge { background: linear-gradient(135deg, #ffd27a, #ff8a3d); }
+        .grain-badge { background: linear-gradient(135deg, #aab2c0, #5b6470); }
+        .effect-none-badge { background: linear-gradient(135deg, #7f8c8d, #555555); }
+
         .empty-state {
             padding: 40px 20px;
             text-align: center;
@@ -528,26 +572,55 @@
     </div>
 
     <aside class="sidebar">
-        <div class="sidebar-header">
-            <div class="sidebar-title-row">
-                <div class="sidebar-title">风格</div>
-                <div class="sidebar-count" id="presetCount">0 presets</div>
-            </div>
-            <div class="sidebar-btn-row">
-                <button class="preload-btn" id="preloadBtn" type="button">预加载所有</button>
-                <button class="preload-btn update-rank-btn" id="updateRankBtn" type="button">更新排名</button>
-            </div>
-            <div class="update-rank-status" id="updateRankStatus" hidden></div>
-            <div class="preload-progress" id="preloadProgress" hidden>
-                <div class="preload-bar"><div class="preload-bar-fill" id="preloadBarFill"></div></div>
-                <div class="preload-meta">
-                    <span class="preload-text" id="preloadText">0 / 0</span>
-                    <button class="preload-cancel" id="preloadCancel" type="button">取消</button>
+        <div class="tabs">
+            <div class="tab active" data-tab="style" id="tabStyle">风格</div>
+            <div class="tab" data-tab="light" id="tabLight">光影</div>
+            <div class="tab" data-tab="grain" id="tabGrain">颗粒</div>
+        </div>
+
+        <!-- 风格面板 -->
+        <div class="tab-panel active" id="panelStyle">
+            <div class="sidebar-header">
+                <div class="sidebar-title-row">
+                    <div class="sidebar-title">风格</div>
+                    <div class="sidebar-count" id="presetCount">0 presets</div>
+                </div>
+                <div class="sidebar-btn-row">
+                    <button class="preload-btn" id="preloadBtn" type="button">预加载所有</button>
+                    <button class="preload-btn update-rank-btn" id="updateRankBtn" type="button">更新排名</button>
+                </div>
+                <div class="update-rank-status" id="updateRankStatus" hidden></div>
+                <div class="preload-progress" id="preloadProgress" hidden>
+                    <div class="preload-bar"><div class="preload-bar-fill" id="preloadBarFill"></div></div>
+                    <div class="preload-meta">
+                        <span class="preload-text" id="preloadText">0 / 0</span>
+                        <button class="preload-cancel" id="preloadCancel" type="button">取消</button>
+                    </div>
                 </div>
             </div>
+            <div class="presets-scroll" id="presetsScroll">
+                <div class="empty-state" id="loadingState">加载预设中...</div>
+            </div>
         </div>
-        <div class="presets-scroll" id="presetsScroll">
-            <div class="empty-state" id="loadingState">加载预设中...</div>
+
+        <!-- 光影面板 -->
+        <div class="tab-panel" id="panelLight">
+            <div class="presets-scroll" id="lightListScroll">
+                <div class="empty-state">加载光影预设中...</div>
+            </div>
+            <div class="panel-btn-row">
+                <button class="preload-btn" id="preloadLightBtn" type="button">预加载光影</button>
+            </div>
+        </div>
+
+        <!-- 颗粒面板 -->
+        <div class="tab-panel" id="panelGrain">
+            <div class="presets-scroll" id="grainListScroll">
+                <div class="empty-state">加载颗粒预设中...</div>
+            </div>
+            <div class="panel-btn-row">
+                <button class="preload-btn" id="preloadGrainBtn" type="button">预加载颗粒</button>
+            </div>
         </div>
     </aside>
 </div>
@@ -729,6 +802,13 @@
     const deleteBtn = document.getElementById('deleteBtn');
     const backBtn = document.getElementById('backBtn');
     const presetsScroll = document.getElementById('presetsScroll');
+    const lightListScroll = document.getElementById('lightListScroll');
+    const grainListScroll = document.getElementById('grainListScroll');
+    const preloadLightBtn = document.getElementById('preloadLightBtn');
+    const preloadGrainBtn = document.getElementById('preloadGrainBtn');
+    const panelStyle = document.getElementById('panelStyle');
+    const panelLight = document.getElementById('panelLight');
+    const panelGrain = document.getElementById('panelGrain');
     const presetCount = document.getElementById('presetCount');
     const preloadBtn = document.getElementById('preloadBtn');
     const preloadProgress = document.getElementById('preloadProgress');
@@ -744,6 +824,11 @@
     let selectedLutKey = null;
     let currentImageId = null;
     let currentImageName = 'image.jpg';
+    // 光影 / 颗粒 维度状态（与 LUT 独立，可叠加）
+    let currentLightKey = 'none';
+    let currentGrainKey = 'none';
+    let currentLightAlg = null;
+    let currentGrainAlg = null;
 
     // ---- LUT 排名实时更新（直连排名站 Supabase，复刻排名站算法重算） ----
     // 配置与排名站 https://lutrankingtest-3v7125w.maozi.io/js/config.js 保持一致
@@ -1294,8 +1379,144 @@
         return dst;
     }
 
-    function renderCacheKey(lutKey) {
-        return (currentImageId || 'img') + '::' + (lutKey || selectedLutKey || 'original');
+    // =====================================================================
+    //  光影 / 颗粒 效果（独立于 LUT 的另外两个创意维度，可叠加）
+    // =====================================================================
+
+    // 效果预设定义。key 同时作为渲染/缓存标识；alg 指向具体算法。
+    const EFFECTS = {
+        light: [
+            { key: 'none',     name: '无光影',   alg: null,            desc: '保持原始光线', badge: 'effect-none-badge', letter: '–' },
+            { key: 'leak',     name: '复古漏光', alg: 'retroLeak',     desc: '暖色光晕由边缘漫入，胶片漏光感', badge: 'light-badge', letter: '漏' },
+            { key: 'vignette', name: '胶片暗角', alg: 'filmVignette',  desc: '四角压暗、中心提亮，镜头暗角', badge: 'light-badge', letter: '角' }
+        ],
+        grain: [
+            { key: 'none',   name: '无颗粒',   alg: null,            desc: '保持干净画面', badge: 'effect-none-badge', letter: '–' },
+            { key: 'kgold',  name: '柯达暖粒', alg: 'kodakGold',      desc: 'Kodak 暖调颗粒，柔和怀旧', badge: 'grain-badge', letter: 'K' },
+            { key: 'delta',  name: '银盐细粒', alg: 'ilfordDelta',    desc: 'Ilford 银盐颗粒，细锐中性', badge: 'grain-badge', letter: 'Δ' }
+        ]
+    };
+
+    // ---- 光影算法（方案B：基于亮度与空间的“重打光”近似） ----
+
+    // 复古漏光：暖色光斑由一侧边缘漫入，按 screen 混合；叠加轻微整体暖移。
+    function applyLightRetroLeak(px, w, h) {
+        const cx = w * 0.5, cy = h * 0.42;
+        // 漏光光晕中心偏向左侧偏上
+        const lx = w * 0.18, ly = h * 0.22;
+        const maxd = Math.sqrt(w * w + h * h);
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const i = (y * w + x) * 4;
+                // 光晕强度：近光源强，并叠加一道斜向边缘光带
+                const d = Math.sqrt((x - lx) * (x - lx) + (y - ly) * (y - ly));
+                let glow = 1 - d / (maxd * 0.62);
+                glow = Math.max(0, glow);
+                glow = glow * glow;
+                // 顶部/左侧漫入的暖光带
+                const band = Math.max(0, 1 - (x / w) * 1.6) * Math.max(0, 1 - (y / h) * 1.4);
+                const intensity = Math.min(1, glow * 0.85 + band * 0.5);
+                // 暖色光（橙金），screen 混合
+                const r = px[i], g = px[i + 1], b = px[i + 2];
+                const lr = 255, lg = 170, lb = 80;
+                const nr = 255 - (255 - r) * (255 - lr * intensity) / 255;
+                const ng = 255 - (255 - g) * (255 - lg * intensity) / 255;
+                const nb = 255 - (255 - b) * (255 - lb * intensity) / 255;
+                px[i]     = Math.min(255, nr);
+                px[i + 1] = Math.min(255, ng);
+                px[i + 2] = Math.min(255, nb);
+            }
+        }
+    }
+
+    // 胶片暗角：径向压暗四角、轻微提升中心对比，营造镜头暗角。
+    function applyLightFilmVignette(px, w, h) {
+        const cx = w * 0.5, cy = h * 0.5;
+        const maxd = Math.sqrt(cx * cx + cy * cy);
+        const strength = 0.55;     // 暗角强度
+        const feather = 0.75;      // 羽化范围（越大暗角越靠边）
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const i = (y * w + x) * 4;
+                const d = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) / maxd;
+                // 归一化距离 -> 暗角系数
+                let v = 1 - strength * Math.pow(Math.min(1, Math.max(0, (d - (1 - feather)) / feather)), 1.6);
+                v = Math.max(0.35, v);
+                px[i]     = px[i] * v;
+                px[i + 1] = px[i + 1] * v;
+                px[i + 2] = px[i + 2] * v;
+            }
+        }
+    }
+
+    function applyLight(px, w, h, alg) {
+        if (!alg) return;
+        if (alg === 'retroLeak') applyLightRetroLeak(px, w, h);
+        else if (alg === 'filmVignette') applyLightFilmVignette(px, w, h);
+    }
+
+    // ---- 颗粒算法 ----
+
+    function rand255() { return (Math.random() * 2 - 1) * 255; }
+
+    // 柯达暖粒：均匀噪点 + 暖色偏移，幅度中等，阴影略重。
+    function applyGrainKodakGold(px, w, h) {
+        const amount = 18;
+        const warm = 6;
+        for (let i = 0; i < px.length; i += 4) {
+            const lum = (px[i] + px[i + 1] + px[i + 2]) / 3;
+            const k = amount * (0.7 + 0.3 * (1 - lum / 255));
+            const n = rand255() * (k / 255);
+            px[i]     = Math.min(255, Math.max(0, px[i] + n + warm * 0.6));
+            px[i + 1] = Math.min(255, Math.max(0, px[i + 1] + n));
+            px[i + 2] = Math.min(255, Math.max(0, px[i + 2] + n - warm * 0.4));
+        }
+    }
+
+    // 银盐细粒：更细锐、中性，颗粒强度随亮度变化（中间调最明显）。
+    function applyGrainIlfordDelta(px, w, h) {
+        const amount = 14;
+        for (let i = 0; i < px.length; i += 4) {
+            const lum = (px[i] + px[i + 1] + px[i + 2]) / 3;
+            // 中间调颗粒最强，高光/暗部减弱
+            const mid = 1 - Math.abs(lum - 128) / 128;
+            const k = amount * (0.35 + 0.65 * mid);
+            const n = rand255() * (k / 255);
+            px[i]     = Math.min(255, Math.max(0, px[i] + n));
+            px[i + 1] = Math.min(255, Math.max(0, px[i + 1] + n));
+            px[i + 2] = Math.min(255, Math.max(0, px[i + 2] + n));
+        }
+    }
+
+    function applyGrain(px, w, h, alg) {
+        if (!alg) return;
+        if (alg === 'kodakGold') applyGrainKodakGold(px, w, h);
+        else if (alg === 'ilfordDelta') applyGrainIlfordDelta(px, w, h);
+    }
+
+    // 统一应用：LUT -> 光影 -> 颗粒（顺序固定，可叠加）
+    function applyAll(srcPixels, w, h) {
+        let px = srcPixels;
+        if (lutData) px = applyLUTToPixels(px, w, h, lutData);
+        if (currentLightAlg) {
+            // applyLight 直接修改数组，这里用副本避免污染源
+            const copy = px === srcPixels ? px.slice() : px;
+            applyLight(copy, w, h, currentLightAlg);
+            px = copy;
+        }
+        if (currentGrainAlg) {
+            const copy = px.slice();
+            applyGrain(copy, w, h, currentGrainAlg);
+            px = copy;
+        }
+        return px;
+    }
+
+    function renderCacheKey() {
+        return (currentImageId || 'img') + '::'
+            + (selectedLutKey || 'original') + '::'
+            + (currentLightKey || 'none') + '::'
+            + (currentGrainKey || 'none');
     }
 
     function previewDims() {
@@ -1320,21 +1541,20 @@
         }
         // 预览按降分辨率渲染（PREVIEW_MAX），导出时再单独跑全分辨率
         const { w, h } = previewDims();
-        paintCanvas(canvas, w, h, lutData);
+        paintCanvas(canvas, w, h);
         cacheRender(key, canvas);
     }
 
-    // 把 sourceImage 按给定尺寸绘制并套用 LUT，写入 targetCanvas
-    function paintCanvas(targetCanvas, w, h, lut) {
+    // 把 sourceImage 按给定尺寸绘制并套用 风格+光影+颗粒，写入 targetCanvas
+    function paintCanvas(targetCanvas, w, h) {
         targetCanvas.width = w;
         targetCanvas.height = h;
         const tctx = targetCanvas.getContext('2d');
         tctx.drawImage(sourceImage, 0, 0, w, h);
-        if (lut) {
-            const imageData = tctx.getImageData(0, 0, w, h);
-            imageData.data.set(applyLUTToPixels(imageData.data, w, h, lut));
-            tctx.putImageData(imageData, 0, 0);
-        }
+        const imageData = tctx.getImageData(0, 0, w, h);
+        // 注意：applyAll 内部会做副本，不会污染原始像素
+        imageData.data.set(applyAll(imageData.data, w, h));
+        tctx.putImageData(imageData, 0, 0);
     }
 
     function cacheRender(key, srcCanvas) {
@@ -1356,19 +1576,21 @@
         const token = ++prerenderToken;
         const imgId = currentImageId || 'img';
         const { w, h } = previewDims();
+        const savedLut = lutData, savedLight = currentLightAlg, savedGrain = currentGrainAlg;
         for (const key of categoryOrder) {
             for (const fname of (lutIndex[key] || [])) {
                 if (token !== prerenderToken) return; // 图片已切换，中止后台任务
                 const styleKey = lutPath(fname);
-                const rk = imgId + '::' + styleKey;
+                const rk = imgId + '::' + styleKey + '::none::none';
                 if (renderCache.has(rk)) continue; // 已渲染（如用户已点过）
                 try {
                     const text = await loadLutContent(key, fname);
                     const pkey = styleKey;
                     let lut = lutParseCache.get(pkey);
                     if (!lut) { lut = parseCubeFile(text); lutParseCache.set(pkey, lut); }
+                    lutData = lut; currentLightAlg = null; currentGrainAlg = null;
                     const off = document.createElement('canvas');
-                    paintCanvas(off, w, h, lut);
+                    paintCanvas(off, w, h);
                     renderCache.set(rk, off);
                     while (renderCache.size > RENDER_CACHE_MAX) {
                         const oldest = renderCache.keys().next().value;
@@ -1378,7 +1600,40 @@
                 await new Promise(r => setTimeout(r, 0)); // 让出主线程，避免卡顿
             }
         }
+        lutData = savedLut; currentLightAlg = savedLight; currentGrainAlg = savedGrain;
     }
+
+    // 后台预渲染某一维度的全部预设（光影 / 颗粒），仅预加载该维度
+    async function prerenderDimension(dim) {
+        if (!sourceImage) return;
+        const token = ++dimensionToken;
+        const imgId = currentImageId || 'img';
+        const { w, h } = previewDims();
+        const items = (EFFECTS[dim] || []).filter(e => e.alg);
+        const savedLut = lutData, savedLight = currentLightAlg, savedGrain = currentGrainAlg;
+        for (const e of items) {
+            if (token !== dimensionToken) return;
+            const rk = imgId + '::' + (selectedLutKey || 'original') + '::'
+                + (dim === 'light' ? e.key : 'none') + '::'
+                + (dim === 'grain' ? e.key : 'none');
+            if (renderCache.has(rk)) continue;
+            try {
+                lutData = savedLut;
+                currentLightAlg = dim === 'light' ? e.alg : null;
+                currentGrainAlg = dim === 'grain' ? e.alg : null;
+                const off = document.createElement('canvas');
+                paintCanvas(off, w, h);
+                renderCache.set(rk, off);
+                while (renderCache.size > RENDER_CACHE_MAX) {
+                    const oldest = renderCache.keys().next().value;
+                    renderCache.delete(oldest);
+                }
+            } catch (err) { console.warn('预渲染维度失败（已跳过）:', dim, e.key, err); }
+            await new Promise(r => setTimeout(r, 0));
+        }
+        lutData = savedLut; currentLightAlg = savedLight; currentGrainAlg = savedGrain;
+    }
+    let dimensionToken = 0;
 
     function buildPresets() {
         if (!lutIndex) return;
@@ -1432,6 +1687,41 @@
         presetCount.textContent = total + ' preset' + (total === 1 ? '' : 's');
     }
 
+    // ---- 光影 / 颗粒 列表渲染 ----
+    function buildEffectList(dim, scrollEl, selectedKey) {
+        scrollEl.innerHTML = '';
+        const list = document.createElement('div');
+        list.className = 'preset-list';
+        for (const e of EFFECTS[dim]) {
+            const item = document.createElement('div');
+            item.className = 'preset-item';
+            if (selectedKey === e.key) item.classList.add('selected');
+            const badgeClass = e.badge ? e.badge : 'preset-badge';
+            item.innerHTML = `
+                <div class="preset-badge ${badgeClass}">${e.letter}</div>
+                <div class="preset-info">
+                    <div class="preset-name">${e.name}</div>
+                    <div class="preset-category-label">${e.desc}</div>
+                </div>
+                <div class="preset-check">✓</div>
+            `;
+            item.addEventListener('click', () => {
+                if (dim === 'light') selectLight(e.key);
+                else selectGrain(e.key);
+            });
+            list.appendChild(item);
+        }
+        scrollEl.appendChild(list);
+    }
+
+    function buildLightList() {
+        buildEffectList('light', lightListScroll, currentLightKey);
+    }
+
+    function buildGrainList() {
+        buildEffectList('grain', grainListScroll, currentGrainKey);
+    }
+
     async function selectLut(category, filename) {
         currentStyleKey = lutPath(filename);
         showOriginal = false;
@@ -1462,19 +1752,49 @@
         }
     }
 
+    async function selectLight(key) {
+        showOriginal = false;
+        updateOriginalSwitch();
+        currentLightKey = key;
+        const def = EFFECTS.light.find(e => e.key === key);
+        currentLightAlg = def ? def.alg : null;
+        const instant = renderCache.has(renderCacheKey());
+        if (!instant) loadingOverlay.classList.add('visible');
+        buildLightList();
+        render();
+        loadingOverlay.classList.remove('visible');
+    }
+
+    async function selectGrain(key) {
+        showOriginal = false;
+        updateOriginalSwitch();
+        currentGrainKey = key;
+        const def = EFFECTS.grain.find(e => e.key === key);
+        currentGrainAlg = def ? def.alg : null;
+        const instant = renderCache.has(renderCacheKey());
+        if (!instant) loadingOverlay.classList.add('visible');
+        buildGrainList();
+        render();
+        loadingOverlay.classList.remove('visible');
+    }
+
     function updateOriginalSwitch() {
         originalSwitch.classList.toggle('on', showOriginal);
         originalSwitch.setAttribute('aria-checked', showOriginal ? 'true' : 'false');
     }
 
-    // 原图开关：on=显示原图，off=显示当前选中的风格
+    // 原图开关：on=显示纯原图（关闭风格+光影+颗粒），off=恢复当前三维选择
     function setShowOriginal(on) {
         showOriginal = on;
         updateOriginalSwitch();
         if (on) {
             selectedLutKey = null;
             lutData = null;
+            currentLightAlg = null;
+            currentGrainAlg = null;
             buildPresets();
+            buildLightList();
+            buildGrainList();
             render();
         } else {
             if (!currentStyleKey) currentStyleKey = getFirstStyleKey();
@@ -1548,10 +1868,13 @@
         if (!hasImage) return;
         const link = document.createElement('a');
         const base = currentImageName.replace(/\.[^/.]+$/, '');
-        const lutSuffix = selectedLutKey
-            ? '-' + selectedLutKey.replace(/\//g, '-').replace(/\.(cube|CUBE)$/, '')
-            : '-original';
-        link.download = base + lutSuffix + '.jpg';
+        const parts = [];
+        parts.push(selectedLutKey
+            ? selectedLutKey.replace(/\//g, '-').replace(/\.(cube|CUBE)$/, '')
+            : 'original');
+        if (currentLightKey && currentLightKey !== 'none') parts.push('L-' + currentLightKey);
+        if (currentGrainKey && currentGrainKey !== 'none') parts.push('G-' + currentGrainKey);
+        link.download = base + '-' + parts.join('-') + '.jpg';
         // 导出用原图全分辨率渲染（不受预览降分辨率影响）；JPG 不支持透明通道，先铺白底
         const nw = sourceImage.naturalWidth || sourceImage.width;
         const nh = sourceImage.naturalHeight || sourceImage.height;
@@ -1562,11 +1885,9 @@
         octx.fillStyle = '#ffffff';
         octx.fillRect(0, 0, nw, nh);
         octx.drawImage(sourceImage, 0, 0, nw, nh);
-        if (lutData) {
-            const imageData = octx.getImageData(0, 0, nw, nh);
-            imageData.data.set(applyLUTToPixels(imageData.data, nw, nh, lutData));
-            octx.putImageData(imageData, 0, 0);
-        }
+        const imageData = octx.getImageData(0, 0, nw, nh);
+        imageData.data.set(applyAll(imageData.data, nw, nh));
+        octx.putImageData(imageData, 0, 0);
         link.href = out.toDataURL('image/jpeg', 0.92);
         link.click();
     }
@@ -1605,6 +1926,19 @@
     preloadBtn.addEventListener('click', preloadAll);
     preloadCancel.addEventListener('click', cancelPreload);
 
+    // ---- Tab 切换（风格 / 光影 / 颗粒） ----
+    const tabs = document.querySelectorAll('.tab');
+    const panels = { style: panelStyle, light: panelLight, grain: panelGrain };
+    function switchTab(name) {
+        tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+        Object.keys(panels).forEach(k => panels[k].classList.toggle('active', k === name));
+    }
+    tabs.forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+    // 光影 / 颗粒 各自“预加载”按钮（仅预加载对应维度）
+    preloadLightBtn.addEventListener('click', () => prerenderDimension('light'));
+    preloadGrainBtn.addEventListener('click', () => prerenderDimension('grain'));
+
     imageInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) handleImageFile(e.target.files[0]);
     });
@@ -1625,6 +1959,8 @@
     });
 
     // ---- Init ----
+    buildLightList();
+    buildGrainList();
     const imageId = getUrlParam('id');
     if (imageId) {
         loadImageFromDB(imageId);
