@@ -284,6 +284,9 @@
             font-size: 12px;
             color: var(--text-dim);
         }
+        .sidebar-header > .sidebar-count {
+            text-align: left;
+        }
 
         /* ---- 预加载所有 ---- */
         .preload-btn {
@@ -472,7 +475,6 @@
         .tab.active {
             color: var(--accent);
             background: var(--panel-bg);
-            box-shadow: inset 0 2px 0 var(--accent);
         }
         .tab-panel {
             display: none;
@@ -483,7 +485,7 @@
         .tab-panel.active { display: flex; }
         .panel-btn-row {
             padding: 12px 14px;
-            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
             flex: 0 0 auto;
         }
         .panel-btn-row .preload-btn { width: 100%; }
@@ -581,10 +583,7 @@
         <!-- 风格面板 -->
         <div class="tab-panel active" id="panelStyle">
             <div class="sidebar-header">
-                <div class="sidebar-title-row">
-                    <div class="sidebar-title">风格</div>
-                    <div class="sidebar-count" id="presetCount">0 presets</div>
-                </div>
+                <div class="sidebar-count" id="presetCount">0 presets</div>
                 <div class="sidebar-btn-row">
                     <button class="preload-btn" id="preloadBtn" type="button">预加载所有</button>
                     <button class="preload-btn update-rank-btn" id="updateRankBtn" type="button">更新排名</button>
@@ -605,21 +604,21 @@
 
         <!-- 光影面板 -->
         <div class="tab-panel" id="panelLight">
-            <div class="presets-scroll" id="lightListScroll">
-                <div class="empty-state">加载光影预设中...</div>
-            </div>
             <div class="panel-btn-row">
                 <button class="preload-btn" id="preloadLightBtn" type="button">预加载光影</button>
+            </div>
+            <div class="presets-scroll" id="lightListScroll">
+                <div class="empty-state">加载光影预设中...</div>
             </div>
         </div>
 
         <!-- 颗粒面板 -->
         <div class="tab-panel" id="panelGrain">
-            <div class="presets-scroll" id="grainListScroll">
-                <div class="empty-state">加载颗粒预设中...</div>
-            </div>
             <div class="panel-btn-row">
                 <button class="preload-btn" id="preloadGrainBtn" type="button">预加载颗粒</button>
+            </div>
+            <div class="presets-scroll" id="grainListScroll">
+                <div class="empty-state">加载颗粒预设中...</div>
             </div>
         </div>
     </aside>
