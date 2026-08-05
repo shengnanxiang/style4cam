@@ -483,12 +483,6 @@
             flex: 1 1 auto;
         }
         .tab-panel.active { display: flex; }
-        .panel-btn-row {
-            padding: 12px 14px;
-            border-bottom: 1px solid var(--border);
-            flex: 0 0 auto;
-        }
-        .panel-btn-row .preload-btn { width: 100%; }
         .light-badge { background: linear-gradient(135deg, #ffd27a, #ff8a3d); }
         .grain-badge { background: linear-gradient(135deg, #aab2c0, #5b6470); }
         .effect-none-badge { background: linear-gradient(135deg, #7f8c8d, #555555); }
@@ -604,9 +598,6 @@
 
         <!-- 光影面板 -->
         <div class="tab-panel" id="panelLight">
-            <div class="panel-btn-row">
-                <button class="preload-btn" id="preloadLightBtn" type="button">预加载光影</button>
-            </div>
             <div class="presets-scroll" id="lightListScroll">
                 <div class="empty-state">加载光影预设中...</div>
             </div>
@@ -614,9 +605,6 @@
 
         <!-- 颗粒面板 -->
         <div class="tab-panel" id="panelGrain">
-            <div class="panel-btn-row">
-                <button class="preload-btn" id="preloadGrainBtn" type="button">预加载颗粒</button>
-            </div>
             <div class="presets-scroll" id="grainListScroll">
                 <div class="empty-state">加载颗粒预设中...</div>
             </div>
@@ -803,8 +791,6 @@
     const presetsScroll = document.getElementById('presetsScroll');
     const lightListScroll = document.getElementById('lightListScroll');
     const grainListScroll = document.getElementById('grainListScroll');
-    const preloadLightBtn = document.getElementById('preloadLightBtn');
-    const preloadGrainBtn = document.getElementById('preloadGrainBtn');
     const panelStyle = document.getElementById('panelStyle');
     const panelLight = document.getElementById('panelLight');
     const panelGrain = document.getElementById('panelGrain');
@@ -1689,38 +1675,6 @@
         lutData = savedLut; currentLightAlg = savedLight; currentGrainAlg = savedGrain;
     }
 
-    // 后台预渲染某一维度的全部预设（光影 / 颗粒），仅预加载该维度
-    async function prerenderDimension(dim) {
-        if (!sourceImage) return;
-        const token = ++dimensionToken;
-        const imgId = currentImageId || 'img';
-        const { w, h } = previewDims();
-        const items = (EFFECTS[dim] || []).filter(e => e.alg);
-        const savedLut = lutData, savedLight = currentLightAlg, savedGrain = currentGrainAlg;
-        for (const e of items) {
-            if (token !== dimensionToken) return;
-            const rk = imgId + '::' + (selectedLutKey || 'original') + '::'
-                + (dim === 'light' ? e.key : 'none') + '::'
-                + (dim === 'grain' ? e.key : 'none');
-            if (renderCache.has(rk)) continue;
-            try {
-                lutData = savedLut;
-                currentLightAlg = dim === 'light' ? e.alg : null;
-                currentGrainAlg = dim === 'grain' ? e.alg : null;
-                const off = document.createElement('canvas');
-                paintCanvas(off, w, h);
-                renderCache.set(rk, off);
-                while (renderCache.size > RENDER_CACHE_MAX) {
-                    const oldest = renderCache.keys().next().value;
-                    renderCache.delete(oldest);
-                }
-            } catch (err) { console.warn('预渲染维度失败（已跳过）:', dim, e.key, err); }
-            await new Promise(r => setTimeout(r, 0));
-        }
-        lutData = savedLut; currentLightAlg = savedLight; currentGrainAlg = savedGrain;
-    }
-    let dimensionToken = 0;
-
     function buildPresets() {
         if (!lutIndex) return;
         presetsScroll.innerHTML = '';
@@ -2020,10 +1974,6 @@
         Object.keys(panels).forEach(k => panels[k].classList.toggle('active', k === name));
     }
     tabs.forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
-
-    // 光影 / 颗粒 各自“预加载”按钮（仅预加载对应维度）
-    preloadLightBtn.addEventListener('click', () => prerenderDimension('light'));
-    preloadGrainBtn.addEventListener('click', () => prerenderDimension('grain'));
 
     imageInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) handleImageFile(e.target.files[0]);
