@@ -1385,9 +1385,13 @@
     // 效果预设定义。key 同时作为渲染/缓存标识；alg 指向具体算法。
     const EFFECTS = {
         light: [
-            { key: 'none',     name: '无光影',   alg: null,            desc: '保持原始光线', badge: 'effect-none-badge', letter: '–' },
-            { key: 'leak',     name: '复古漏光', alg: 'retroLeak',     desc: '暖色光晕由边缘漫入，胶片漏光感', badge: 'light-badge', letter: '漏' },
-            { key: 'vignette', name: '胶片暗角', alg: 'filmVignette',  desc: '四角压暗、中心提亮，镜头暗角', badge: 'light-badge', letter: '角' }
+            { key: 'none',      name: '无光影',   alg: null,            desc: '保持原始光线', badge: 'effect-none-badge', letter: '–' },
+            { key: 'leak',      name: '复古漏光', alg: 'retroLeak',     desc: '暖色光晕由边缘漫入，胶片漏光感', badge: 'light-badge', letter: '漏' },
+            { key: 'vignette',  name: '胶片暗角', alg: 'filmVignette',  desc: '四角压暗、中心提亮，镜头暗角', badge: 'light-badge', letter: '角' },
+            { key: 'glow',      name: '魅力光晕', alg: 'charmGlow',     desc: '中心高光柔和晕开，梦幻通透', badge: 'light-badge', letter: '晕' },
+            { key: 'coolfill',  name: '蓝调阴影', alg: 'coolFill',      desc: '暗部补冷蓝调，日系小清新', badge: 'light-badge', letter: '蓝' },
+            { key: 'goldenhour',name: '暖阳时刻', alg: 'goldenHour',    desc: '暗部暖橙、亮部微曝，夕阳氛围', badge: 'light-badge', letter: '暖' },
+            { key: 'spotlight', name: '聚光灯',   alg: 'spotlight',     desc: '中心径向提亮，如打一盏灯', badge: 'light-badge', letter: '灯' }
         ],
         grain: [
             { key: 'none',   name: '无颗粒',   alg: null,            desc: '保持干净画面', badge: 'effect-none-badge', letter: '–' },
@@ -1448,10 +1452,93 @@
         }
     }
 
+    // 魅力光晕：提取高亮区域，向外做柔和径向晕开（bloom），叠加 screen 混合。
+    // 近似 Snapseed「魅力光晕」：画面更梦幻、更通透。
+    function applyLightCharmGlow(px, w, h) {
+        const cx = w * 0.5, cy = h * 0.5;
+        const maxd = Math.sqrt(cx * cx + cy * cy);
+        const glowStrength = 0.5;   // 光晕强度
+        const threshold = 0.62;     // 仅高亮区参与发光
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const i = (y * w + x) * 4;
+                const lum = (px[i] + px[i + 1] + px[i + 2]) / (3 * 255);
+                // 高光权重：越亮越参与
+                const hi = Math.max(0, lum - threshold) / (1 - threshold);
+                if (hi <= 0) continue;
+                // 离中心越远光晕略弱（柔和扩散）
+                const d = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) / maxd;
+                const falloff = 1 - 0.35 * d;
+                const intensity = hi * glowStrength * falloff;
+                const r = px[i], g = px[i + 1], b = px[i + 2];
+                // 用像素自身颜色做 screen 发光，保持色相
+                const nr = 255 - (255 - r) * (255 - r * intensity) / 255;
+                const ng = 255 - (255 - g) * (255 - g * intensity) / 255;
+                const nb = 255 - (255 - b) * (255 - b * intensity) / 255;
+                px[i]     = Math.min(255, nr);
+                px[i + 1] = Math.min(255, ng);
+                px[i + 2] = Math.min(255, nb);
+            }
+        }
+    }
+
+    // 蓝调阴影：对暗部补一层冷蓝调，亮部基本不动。日系 / 窗边光核心。
+    function applyLightCoolFill(px, w, h) {
+        const strength = 0.22;      // 冷调强度
+        for (let i = 0; i < px.length; i += 4) {
+            const lum = (px[i] + px[i + 1] + px[i + 2]) / 3;
+            // 暗部权重（越暗补得越多）
+            const shadow = Math.max(0, 1 - lum / 140);
+            const k = strength * shadow;
+            if (k <= 0) continue;
+            px[i]     = Math.min(255, px[i] - k * 22);   // 红略减
+            px[i + 1] = Math.min(255, px[i + 1] - k * 6); // 绿微减
+            px[i + 2] = Math.min(255, px[i + 2] + k * 46); // 蓝增
+        }
+    }
+
+    // 暖阳时刻：整体对比略降，暗部加暖橙、亮部微微过曝泛黄，模拟夕阳。
+    function applyLightGoldenHour(px, w, h) {
+        const warmStrength = 0.16;  // 暖调强度
+        const lift = 10;            // 整体提亮
+        for (let i = 0; i < px.length; i += 4) {
+            const lum = (px[i] + px[i + 1] + px[i + 2]) / 3;
+            // 暗部暖得更明显，亮部轻微过曝泛黄
+            const shadow = Math.max(0, 1 - lum / 170);
+            const k = warmStrength * (0.5 + 0.5 * shadow);
+            px[i]     = Math.min(255, px[i] + lift + k * 40);       // 红增（暖）
+            px[i + 1] = Math.min(255, px[i + 1] + lift + k * 18);   // 绿微增
+            px[i + 2] = Math.min(255, px[i + 2] + lift - k * 26);   // 蓝减
+        }
+    }
+
+    // 聚光灯：以画面中心为光源做径向提亮，越靠中心越亮，边缘自然衰减。
+    function applyLightSpotlight(px, w, h) {
+        const cx = w * 0.5, cy = h * 0.5;
+        const maxd = Math.sqrt(cx * cx + cy * cy);
+        const strength = 0.45;      // 提亮强度
+        const feather = 0.9;        // 衰减范围（越大光斑越大）
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const i = (y * w + x) * 4;
+                const d = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) / maxd;
+                const t = Math.min(1, Math.max(0, (1 - d) / feather));
+                const boost = strength * (t * t);
+                px[i]     = Math.min(255, px[i] + boost * 70);
+                px[i + 1] = Math.min(255, px[i + 1] + boost * 70);
+                px[i + 2] = Math.min(255, px[i + 2] + boost * 68);
+            }
+        }
+    }
+
     function applyLight(px, w, h, alg) {
         if (!alg) return;
         if (alg === 'retroLeak') applyLightRetroLeak(px, w, h);
         else if (alg === 'filmVignette') applyLightFilmVignette(px, w, h);
+        else if (alg === 'charmGlow') applyLightCharmGlow(px, w, h);
+        else if (alg === 'coolFill') applyLightCoolFill(px, w, h);
+        else if (alg === 'goldenHour') applyLightGoldenHour(px, w, h);
+        else if (alg === 'spotlight') applyLightSpotlight(px, w, h);
     }
 
     // ---- 颗粒算法 ----
