@@ -1,0 +1,1635 @@
+<!-- build: 2026-08-03 fix-lID-mapping (align LUT_FILE_BY_LID with ranking site config.js) -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LUT Studio - Editor</title>
+    <style>
+        :root {
+            --bg: #000000;
+            --panel-bg: #0a0a0a;
+            --toolbar-bg: #0a0a0a;
+            --border: rgba(255, 255, 255, 0.08);
+            --text: #ffffff;
+            --text-muted: rgba(255, 255, 255, 0.55);
+            --text-dim: rgba(255, 255, 255, 0.35);
+            --accent: #ff9f43;
+            --accent-glow: rgba(255, 159, 67, 0.35);
+            --radius: 10px;
+            --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .app {
+            height: 100vh;
+            display: flex;
+        }
+
+        /* ---- Left Toolbar ---- */
+        .toolbar {
+            width: 64px;
+            flex-shrink: 0;
+            background: var(--toolbar-bg);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 14px 0;
+            gap: 8px;
+        }
+
+        .tool-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .tool-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .tool-btn:hover {
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .tool-btn:active {
+            transform: scale(0.95);
+        }
+
+        .tool-btn.accent:hover {
+            color: var(--accent);
+            background: rgba(255, 159, 67, 0.1);
+            border-color: rgba(255, 159, 67, 0.3);
+        }
+
+        .tool-btn.danger:hover {
+            color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.1);
+            border-color: rgba(255, 107, 107, 0.3);
+        }
+
+        .tool-divider {
+            width: 28px;
+            height: 1px;
+            background: var(--border);
+            margin: 6px 0;
+        }
+
+        .tool-spacer {
+            flex: 1;
+        }
+
+        /* ---- Main Preview ---- */
+        .preview {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            cursor: pointer;
+            overflow: hidden;
+        }
+
+        .preview-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: none;
+        }
+
+        .preview-canvas.visible {
+            display: block;
+        }
+
+        .upload-placeholder {
+            text-align: center;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        .upload-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 18px;
+            color: rgba(255, 255, 255, 0.25);
+        }
+
+        .upload-title {
+            font-size: 17px;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .upload-hint {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.25);
+            letter-spacing: 0.05em;
+        }
+
+        .preview.has-image .upload-placeholder {
+            opacity: 0;
+        }
+
+        .preview.drag-over {
+            background: rgba(255, 159, 67, 0.04);
+            box-shadow: inset 0 0 0 2px rgba(255, 159, 67, 0.35);
+        }
+
+        .preview input[type="file"] { display: none; }
+
+        /* ---- Loading ---- */
+        .loading-overlay {
+            display: none;
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.72);
+            z-index: 10;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        .loading-overlay.visible { display: flex; }
+
+        /* ---- 原图开关（图片底部居中浮层） ---- */
+        .original-toggle {
+            position: absolute;
+            bottom: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 14px;
+            background: rgba(20, 20, 22, 0.66);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 999px;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            user-select: none;
+            cursor: pointer;
+        }
+        .preview:not(.has-image) .original-toggle { display: none; }
+        .original-toggle-text {
+            font-size: 13px;
+            color: var(--text-muted);
+            letter-spacing: 0.04em;
+        }
+        .switch {
+            position: relative;
+            width: 40px;
+            height: 22px;
+            border: none;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.2);
+            cursor: pointer;
+            padding: 0;
+            transition: background 0.2s;
+        }
+        .switch.on { background: #ff9f43; }
+        .switch-knob {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #fff;
+            transition: transform 0.2s;
+        }
+        .switch.on .switch-knob { transform: translateX(18px); }
+
+        .loading-spinner {
+            width: 38px;
+            height: 38px;
+            border: 2px solid rgba(255, 255, 255, 0.08);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            box-shadow: 0 0 18px var(--accent-glow);
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-text {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--accent);
+            text-shadow: 0 0 10px var(--accent-glow);
+        }
+
+        /* ---- Sidebar ---- */
+        .sidebar {
+            width: 340px;
+            flex-shrink: 0;
+            background: var(--panel-bg);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 18px 20px 14px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .sidebar-title-row {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+        }
+
+        .sidebar-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .sidebar-count {
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+
+        /* ---- 预加载所有 ---- */
+        .preload-btn {
+            width: 100%;
+            padding: 9px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text);
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .preload-btn:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.25); }
+        .preload-btn:disabled { opacity: 0.6; cursor: default; }
+        .sidebar-btn-row { display: flex; gap: 8px; }
+        .sidebar-btn-row .preload-btn { flex: 1; }
+        .update-rank-btn { background: rgba(255, 159, 67, 0.16); border-color: rgba(255, 159, 67, 0.4); color: #ffb86b; }
+        .update-rank-btn:hover { background: rgba(255, 159, 67, 0.28); }
+        .update-rank-status {
+            margin-top: 8px;
+            font-size: 11.5px;
+            line-height: 1.4;
+            color: rgba(255, 255, 255, 0.55);
+        }
+        .update-rank-status.is-ok { color: #4cd964; }
+        .update-rank-status.is-err { color: #ff6b6b; }
+        .preload-progress { width: 100%; }
+        .preload-bar {
+            width: 100%;
+            height: 8px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+        }
+        .preload-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: #ff9f43;
+            transition: width 0.2s;
+        }
+        .preload-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 6px;
+        }
+        .preload-text { font-size: 12px; color: var(--text-dim); }
+        .preload-cancel {
+            border: none;
+            background: none;
+            color: #ff6b6b;
+            font-size: 12px;
+            cursor: pointer;
+            padding: 2px 4px;
+        }
+
+        .presets-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 14px 16px 24px;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.12) transparent;
+        }
+
+        .presets-scroll::-webkit-scrollbar { width: 5px; }
+        .presets-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.12);
+            border-radius: 3px;
+        }
+
+        .preset-category { margin-bottom: 22px; }
+
+        .category-title {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: 12px;
+            padding-left: 4px;
+        }
+
+        .preset-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .preset-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border: 1px solid transparent;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .preset-item:hover { background: rgba(255, 255, 255, 0.04); }
+
+        .preset-item.selected {
+            background: rgba(255, 255, 255, 0.07);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .preset-badge {
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            color: #fff;
+            flex-shrink: 0;
+            white-space: nowrap;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 2px 8px rgba(0,0,0,0.25);
+        }
+
+        .preset-info { flex: 1; min-width: 0; }
+
+        .preset-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .preset-category-label {
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+
+        .preset-check {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent);
+            color: #000;
+            font-size: 10px;
+            font-weight: 700;
+            opacity: 0;
+            transform: scale(0.8);
+            transition: all 0.15s ease;
+        }
+
+        .preset-item.selected .preset-check {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .empty-state {
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 13px;
+        }
+
+        /* Category colors */
+        .cat-fuji .preset-badge { background: linear-gradient(135deg, #e74c3c, #c0392b); }
+        .cat-kodak .preset-badge { background: linear-gradient(135deg, #f39c12, #d35400); }
+        .cat-negative .preset-badge { background: linear-gradient(135deg, #9b59b6, #8e44ad); }
+        .cat-classic .preset-badge { background: linear-gradient(135deg, #1abc9c, #16a085); }
+        .cat-colors .preset-badge { background: linear-gradient(135deg, #e84393, #d63031); }
+        .cat-retro .preset-badge { background: linear-gradient(135deg, #a0522d, #8b4513); }
+        .cat-for-cam .preset-badge { background: linear-gradient(135deg, #3498db, #2980b9); }
+        .cat-original .preset-badge { background: linear-gradient(135deg, #7f8c8d, #555555); }
+        .cat-flash .preset-badge { background: linear-gradient(135deg, #f7dc6f, #f0b429); }
+
+        /* Ranking tier colors (from LUT ranking test) */
+        .cat-top10 .preset-badge { background: linear-gradient(135deg, #f1c40f, #e67e22); }
+        .cat-r11_15 .preset-badge { background: linear-gradient(135deg, #2ecc71, #27ae60); }
+        .cat-r16_20 .preset-badge { background: linear-gradient(135deg, #3498db, #2980b9); }
+        .cat-r21_26 .preset-badge { background: linear-gradient(135deg, #9b59b6, #8e44ad); }
+        .cat-r27_32 .preset-badge { background: linear-gradient(135deg, #7f8c8d, #576574); }
+
+        .category-title .tier-count {
+            color: var(--text-dim);
+            font-weight: 400;
+            font-size: 11px;
+            margin-left: 6px;
+        }
+
+        /* Mobile */
+        @media (max-width: 768px) {
+            .toolbar { width: 52px; }
+            .sidebar { width: 100%; position: absolute; right: 0; top: 0; bottom: 0; transform: translateX(100%); transition: transform 0.25s; }
+            .sidebar.open { transform: translateX(0); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="app">
+    <nav class="toolbar">
+        <button class="tool-btn" id="backBtn" title="返回列表">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+        </button>
+        <div class="tool-divider"></div>
+        <button class="tool-btn accent" id="uploadBtn" title="上传图片">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </button>
+        <button class="tool-btn" id="downloadBtn" title="下载效果" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+        <div class="tool-spacer"></div>
+        <button class="tool-btn danger" id="deleteBtn" title="删除图片">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+    </nav>
+
+    <div class="preview" id="preview">
+        <canvas id="canvas" class="preview-canvas"></canvas>
+        <div class="upload-placeholder" id="placeholder">
+            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <div class="upload-title">点击或拖拽图片到此处</div>
+            <div class="upload-hint">支持 JPG / PNG / WebP</div>
+        </div>
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">应用 LUT 中</div>
+        </div>
+        <div class="original-toggle" id="originalToggle">
+            <span class="original-toggle-text">原图</span>
+            <button type="button" class="switch" id="originalSwitch" role="switch" aria-checked="false">
+                <span class="switch-knob"></span>
+            </button>
+        </div>
+        <input type="file" id="imageInput" accept="image/*">
+    </div>
+
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-title-row">
+                <div class="sidebar-title">风格</div>
+                <div class="sidebar-count" id="presetCount">0 presets</div>
+            </div>
+            <div class="sidebar-btn-row">
+                <button class="preload-btn" id="preloadBtn" type="button">预加载所有</button>
+                <button class="preload-btn update-rank-btn" id="updateRankBtn" type="button">更新排名</button>
+            </div>
+            <div class="update-rank-status" id="updateRankStatus" hidden></div>
+            <div class="preload-progress" id="preloadProgress" hidden>
+                <div class="preload-bar"><div class="preload-bar-fill" id="preloadBarFill"></div></div>
+                <div class="preload-meta">
+                    <span class="preload-text" id="preloadText">0 / 0</span>
+                    <button class="preload-cancel" id="preloadCancel" type="button">取消</button>
+                </div>
+            </div>
+        </div>
+        <div class="presets-scroll" id="presetsScroll">
+            <div class="empty-state" id="loadingState">加载预设中...</div>
+        </div>
+    </aside>
+</div>
+
+<script src="db.js"></script>
+<script>
+    const LUT_BASE = '.';
+    // 所有 .cube 统一存放于该文件夹（不再按子目录分类）
+    let LUT_DIR = 'lut';
+    let lutIndex = null;
+    let categoryOrder = [];
+    // 分组仅用于展示排序，文件一律从 LUT_DIR 读取
+    let GROUP_LABELS = {};
+    let LUT_META = {}; // filename -> { rank, name }
+
+    // 分组 key 与文件名 -> 实际文件路径
+    function lutPath(filename) {
+        return LUT_DIR + '/' + filename;
+    }
+
+    // 解析缓存：filename -> {size, table}，避免每次点击重复解析 .cube
+    const lutParseCache = new Map();
+    // 渲染缓存：(imageId, lutKey) -> 离屏 canvas，LRU 上限避免大图占用过多内存
+    const RENDER_CACHE_MAX = 16; // 放大以容纳后台预渲染的全部风格（预览分辨率下内存可控）
+    const PREVIEW_MAX = 1600; // 屏幕预览渲染的最长边像素；导出仍用原图高清
+    const renderCache = new Map();
+
+    let showOriginal = false;     // 原图开关状态：true=显示原图
+    let currentStyleKey = null;   // 当前选中的风格（原图开关关闭时显示）
+
+    function getFirstStyleKey() {
+        if (!categoryOrder.length) return null;
+        for (const key of categoryOrder) {
+            const files = lutIndex[key] || [];
+            if (files.length) return lutPath(files[0]);
+        }
+        return null;
+    }
+
+    // styleKey 形如 "lut/xxx.cube"，仅拆首个 '/'，避免文件名含 '/' 时出错
+    function splitStyleKey(styleKey) {
+        const i = styleKey.indexOf('/');
+        return i < 0
+            ? ['', styleKey]
+            : [styleKey.slice(0, i), styleKey.slice(i + 1)];
+    }
+
+    const DISPLAY_MAP = {
+        'for cam': {
+            '1.portrait-fujiNC2 48': 'fujiNC2 48',
+            '2.Scenery-fujiNN': 'fujiNN',
+            '3.portrait-Florida2': 'Florida2',
+            '4.Food-fugumeishi': '复古美食',
+            '5.Food-xinxian': '新鲜',
+            '6.portrait-deepblue': 'deepblue',
+            '7.night-yejing11': '夜景11',
+        }
+    };
+
+    const CATEGORY_LABELS = {
+        'fuji': 'Fuji',
+        'kodak': 'Kodak',
+        'negative': 'Negative',
+        'classic': 'Classic',
+        'colors': 'Colors',
+        'retro': 'Retro',
+        'for cam': 'For Cam',
+        'flash': 'Flash',
+        'lab': 'Lab',
+        'movie': 'Movie',
+        'original': 'Original'
+    };
+
+    const BADGE_TEXT = {
+        'fuji': 'FU',
+        'kodak': 'KO',
+        'negative': 'NE',
+        'classic': 'CL',
+        'colors': 'CO',
+        'retro': 'RE',
+        'for cam': 'FC',
+        'flash': 'FL',
+        'lab': 'LA',
+        'movie': 'MO',
+        'original': 'OR'
+    };
+
+    // 每个 LUT 按名称特点配色（仅作用于图标底色）
+    // 每个 LUT 的圆点图标配色（与风格语义匹配，渐变更精致），覆盖全部 32 个
+    const LUT_COLORS = {
+        '日系1996': 'linear-gradient(135deg, #ffafcc, #a2d2ff)',
+        '交叉冲洗': 'linear-gradient(135deg, #06d6a0, #ef476f)',
+        '彩色负片100T': 'linear-gradient(135deg, #f4a261, #e76f51)',
+        '摩卡': 'linear-gradient(135deg, #a47148, #6f4518)',
+        '电影感': 'linear-gradient(135deg, #264653, #e9c46a)',
+        '霸王别姬·蓝': 'linear-gradient(135deg, #48cae4, #023e8a)',
+        '回忆录': 'linear-gradient(135deg, #c8975a, #8a5a2b)',
+        '彩色反转T64': 'linear-gradient(135deg, #83c5be, #006d77)',
+        '霸王别姬·红': 'linear-gradient(135deg, #e5383b, #9d0208)',
+        '人像琥珀提亮': 'linear-gradient(135deg, #ffb703, #fb8500)',
+        '黑白老照片 2': 'linear-gradient(135deg, #9c8b7a, #5c4f43)',
+        '怀旧绿': 'linear-gradient(135deg, #74c69d, #2d6a4f)',
+        '柏林之冬': 'linear-gradient(135deg, #8d99ae, #2b2d42)',
+        '蓝调时光': 'linear-gradient(135deg, #4895ef, #3a0ca3)',
+        '漂白旁路': 'linear-gradient(135deg, #adb5bd, #495057)',
+        '奥林帕斯': 'linear-gradient(135deg, #80ed99, #38a3a5)',
+        '复古风': 'linear-gradient(135deg, #e9a06b, #b5651d)',
+        '黑白纪实': 'linear-gradient(135deg, #b0b0b0, #6c6c6c)',
+        '低饱和蓝晒': 'linear-gradient(135deg, #5e9ed6, #1b4965)',
+        '千禧电影': 'linear-gradient(135deg, #ff8fab, #90e0ef)',
+        '重庆森林 (f)': 'linear-gradient(135deg, #52b788, #1b4332)',
+        '蓝晒': 'linear-gradient(135deg, #1d3557, #0d1b2a)',
+        '港味': 'linear-gradient(135deg, #ef233c, #d00000)',
+        '柯达金': 'linear-gradient(135deg, #ffd166, #f4a261)',
+        '黑白老照片 1': 'linear-gradient(135deg, #a8a8a8, #5a5a5a)',
+        '花束暖调': 'linear-gradient(135deg, #ffafcc, #ff85a1)',
+        '彩色负片': 'linear-gradient(135deg, #e76f51, #bc4749)',
+        '重庆森林': 'linear-gradient(135deg, #52b788, #1b4332)',
+        '蓝调空间': 'linear-gradient(135deg, #7b2cbf, #3a0ca3)',
+        '岛屿青雾': 'linear-gradient(135deg, #48cae4, #0096c7)',
+        '富士NN': 'linear-gradient(135deg, #90be6d, #52796f)',
+        '灰绿色调': 'linear-gradient(135deg, #9ca98b, #6b7a5a)'
+    };
+
+    // 文件名可能带 -f 后缀（如“日系1996-f.cube”），取其语义基名用于配色/描述匹配
+    function lutBaseName(filename) {
+        const meta = LUT_META[filename];
+        let base = meta && meta.name
+            ? meta.name
+            : filename.replace(/\.(cube|CUBE)$/, '');
+        return base.replace(/\s*\(f\)\s*$/, '').replace(/[-_]f$/i, '').trim();
+    }
+
+    function getLutColor(category, filename) {
+        const base = lutBaseName(filename);
+        if (LUT_COLORS[base]) return LUT_COLORS[base];
+        return 'linear-gradient(135deg, #95a5a6, #7f8c8d)';
+    }
+
+    function getCategoryTitle(key) {
+        if (key === 'original') return '';
+        if (GROUP_LABELS[key]) return GROUP_LABELS[key];
+        if (key === 'flash') return '风格列表';
+        return CATEGORY_LABELS[key] || key;
+    }
+
+    // 每个 LUT 的一句话描述（显示在名称下方第二行），按名称语义编写
+    const LUT_DESC = {
+        '原图': '原始照片，未套用任何风格',
+        '回忆录': '怀旧胶片质感，记录旧时光',
+        '岛屿青雾': '清新青蓝，海岛薄雾感',
+        '怀旧绿': '复古青绿，温柔怀旧',
+        '港味': '霓虹港风，电影质感',
+        '灰绿色调': '低饱和灰绿，清冷高级',
+        '花束暖调': '暖粉花束，温柔浪漫',
+        '摩卡': '醇厚摩卡棕，温暖治愈',
+        '日系1996': '日系清新，胶片年代感',
+        '蓝晒': '深蓝蓝晒，古典影像',
+        '蓝调时光': '静谧蓝调，慵懒时光',
+        '重庆森林': '王家卫绿调，迷离暧昧'
+    };
+
+    function getLutDesc(category, filename) {
+        const base = lutBaseName(filename);
+        const meta = LUT_META[filename];
+        if (LUT_DESC[base]) return LUT_DESC[base];
+        if (meta && meta.rank) return '综合排名 第 ' + meta.rank + ' 名';
+        return LUT_DESC[category] || '';
+    }
+
+    const preview = document.getElementById('preview');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const placeholder = document.getElementById('placeholder');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const imageInput = document.getElementById('imageInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const deleteBtn = document.getElementById('deleteBtn');
+    const backBtn = document.getElementById('backBtn');
+    const presetsScroll = document.getElementById('presetsScroll');
+    const presetCount = document.getElementById('presetCount');
+    const preloadBtn = document.getElementById('preloadBtn');
+    const preloadProgress = document.getElementById('preloadProgress');
+    const preloadBarFill = document.getElementById('preloadBarFill');
+    const preloadText = document.getElementById('preloadText');
+    const preloadCancel = document.getElementById('preloadCancel');
+    const originalToggle = document.getElementById('originalToggle');
+    const originalSwitch = document.getElementById('originalSwitch');
+
+    let sourceImage = null;
+    let lutData = null;
+    let hasImage = false;
+    let selectedLutKey = null;
+    let currentImageId = null;
+    let currentImageName = 'image.jpg';
+
+    // ---- LUT 排名实时更新（直连排名站 Supabase，复刻排名站算法重算） ----
+    // 配置与排名站 https://lutrankingtest-3v7125w.maozi.io/js/config.js 保持一致
+    const RANK_SUPABASE_URL = 'https://tdvhftiincchvtgnkbzh.supabase.co';
+    const RANK_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRkdmhmdGlpbmNjaHZ0Z25rYnpoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU1ODM3OTQsImV4cCI6MjEwMTE1OTc5NH0.tJq-bUcR7EB2pSCrbp3T_8NetOICeGIAhTH4IK7uyog';
+    const RANK_TEST_ID = 'v1-2025-Q4';
+    const RANK_TOP_N = 10;
+    const RANK_TIERS = [5, 5, 6, 6];            // 剩余 22 个按 5/5/6/6 分四档（与排名站一致）
+    const RANK_STORAGE_KEY = 'style4cam.rankOverride';
+    const RANK_MAX_ITER = 1000;
+    const RANK_CONVERGE = 1e-9;
+
+    // l01–l32 的 lID→名称映射，严格与排名站 config.js 的 luts 数组保持一致。
+    // 文件名来自磁盘上已有的 .cube 文件。
+    const LUT_FILE_BY_LID = {
+        l01: { name: '人像琥珀提亮', file: '人像琥珀提亮.cube' },
+        l02: { name: '奥林帕斯',     file: '奥林帕斯.cube' },
+        l03: { name: '富士NN',       file: '富士NN.cube' },
+        l04: { name: '日系1996',     file: '日系1996-f.cube' },
+        l05: { name: '柏林之冬',     file: '柏林之冬.cube' },
+        l06: { name: '柯达金',       file: '柯达金.cube' },
+        l07: { name: '港味',         file: '港味-f.cube' },
+        l08: { name: '黑白纪实',     file: '黑白纪实.cube' },
+        l09: { name: '低饱和蓝晒',   file: '低饱和蓝晒.cube' },
+        l10: { name: '彩色反转T64',  file: '彩色反转T64.cube' },
+        l11: { name: '彩色负片100T', file: '彩色负片100T.cube' },
+        l12: { name: '彩色负片',     file: '彩色负片.cube' },
+        l13: { name: '摩卡',         file: '摩卡-f.cube' },
+        l14: { name: '灰绿色调',     file: '灰绿色调-f.cube' },
+        l15: { name: '蓝晒',         file: '蓝晒-f.cube' },
+        l16: { name: '蓝调时光',     file: '蓝调时光-f.cube' },
+        l17: { name: '蓝调空间',     file: '蓝调空间.cube' },
+        l18: { name: '回忆录',       file: '回忆录-f.cube' },
+        l19: { name: '复古风',       file: '复古风.cube' },
+        l20: { name: '怀旧绿',       file: '怀旧绿-f.cube' },
+        l21: { name: '黑白老照片 1', file: '黑白老照片 1.cube' },
+        l22: { name: '黑白老照片 2', file: '黑白老照片 2.cube' },
+        l23: { name: '交叉冲洗',     file: '交叉冲洗.cube' },
+        l24: { name: '岛屿青雾',     file: '岛屿青雾-f.cube' },
+        l25: { name: '漂白旁路',     file: '漂白旁路.cube' },
+        l26: { name: '花束暖调',     file: '花束暖调-f.cube' },
+        l27: { name: '千禧电影',     file: '千禧电影.cube' },
+        l28: { name: '电影感',       file: '电影感.cube' },
+        l29: { name: '重庆森林',     file: '重庆森林.cube' },
+        l30: { name: '重庆森林 (f)', file: '重庆森林-f.cube' },
+        l31: { name: '霸王别姬·红', file: '霸王别姬-红.cube' },
+        l32: { name: '霸王别姬·蓝', file: '霸王别姬-蓝.cube' }
+    };
+
+    // 标准 Bradley-Terry MM 算法（与排名站已验证实现完全一致）
+    // π_i = W_i / Σ_{j≠i} [ n_ij / (π_i + π_j) ]
+    // 其中 n_ij = i 和 j 的两两对阵次数，W_i = i 的总胜场（不含平局）
+    function computeBradleyTerry(counts, pairCounts, maxIter, tol) {
+        maxIter = maxIter || RANK_MAX_ITER;
+        tol = tol || RANK_CONVERGE;
+        const ids = Object.keys(counts);
+        const N = ids.length;
+        if (N === 0) return {};
+        let pi = {};
+        ids.forEach(id => pi[id] = 1.0);
+        const totalWins = {};
+        ids.forEach(id => totalWins[id] = counts[id].wins);
+        for (let it = 0; it < maxIter; it++) {
+            const newPi = {};
+            let maxDelta = 0;
+            for (const i of ids) {
+                const numer = totalWins[i];
+                let denom = 0;
+                for (const j of ids) {
+                    if (i === j) continue;
+                    const pk = i < j ? i + '|' + j : j + '|' + i;
+                    const pairN = pairCounts[pk] || 0;
+                    if (pairN === 0) continue;
+                    denom += pairN / (pi[i] + pi[j]);
+                }
+                if (denom === 0) { newPi[i] = pi[i]; continue; }
+                newPi[i] = numer / denom;
+                maxDelta = Math.max(maxDelta, Math.abs(newPi[i] - pi[i]));
+            }
+            const mean = ids.reduce((s, id) => s + newPi[id], 0) / N;
+            for (const id of ids) newPi[id] /= mean;
+            pi = newPi;
+            if (maxDelta < tol) break;
+        }
+        return pi;
+    }
+
+    function applyTiers(rankedItems, tierSizes) {
+        const groups = [];
+        let idx = 0;
+        let t = 1;
+        for (const size of tierSizes) {
+            const slice = rankedItems.slice(idx, idx + size);
+            if (slice.length === 0) break;
+            groups.push({ tier: t, items: slice });
+            idx += size;
+            t += 1;
+        }
+        // 余下（不足一组）全部归入最后一组
+        if (idx < rankedItems.length) {
+            const last = groups[groups.length - 1];
+            if (last) last.items = last.items.concat(rankedItems.slice(idx));
+            else groups.push({ tier: t, items: rankedItems.slice(idx) });
+        }
+        return groups;
+    }
+
+    async function fetchRankJudgments() {
+        // Supabase 项目默认 db_max_rows=1000，单次最多返回 1000 行。
+        // 这里循环分页（offset 递增），确保超过 1000 条的评判也能全部纳入排名。
+        const PAGE = 1000;
+        let all = [];
+        let offset = 0;
+        while (true) {
+            const url = RANK_SUPABASE_URL + '/rest/v1/judgments?test_id=eq.' +
+                encodeURIComponent(RANK_TEST_ID) + '&select=*&order=lut_a&limit=' +
+                PAGE + '&offset=' + offset;
+            const resp = await fetch(url, {
+                headers: {
+                    'apikey': RANK_SUPABASE_KEY,
+                    'Authorization': 'Bearer ' + RANK_SUPABASE_KEY
+                }
+            });
+            if (!resp.ok) throw new Error('Supabase 请求失败：' + resp.status);
+            const rows = await resp.json();
+            if (!Array.isArray(rows) || rows.length === 0) break;
+            all = all.concat(rows);
+            if (rows.length < PAGE) break;   // 已到末页
+            offset += rows.length;
+        }
+        return all;
+    }
+
+    // 将 judgments 转为候选成绩，标准 aggregate + Bradley-Terry，返回与 lut-list.json 同构的分组对象
+    function buildRankGroups(judgments) {
+        const lids = Object.keys(LUT_FILE_BY_LID);
+        const byId = {};
+        lids.forEach(lid => { byId[lid] = { wins: 0, losses: 0, ties: 0 }; });
+        const pairCounts = {};   // "min|max" → 两两对阵次数
+
+        // aggregate：按 voter_id|lut_a|lut_b 去重，统计胜/负/平 + 两两对阵次数
+        const seen = new Set();
+        for (const j of (judgments || [])) {
+            const a = j.lut_a, b = j.lut_b, w = j.winner;
+            if (!a || !b) continue;
+            if (!byId[a] || !byId[b]) continue;          // 仅统计已知 LUT
+            const k = (j.voter_id || '?') + '|' + a + '|' + b;
+            if (seen.has(k)) continue;
+            seen.add(k);
+            // 两两对阵次数
+            const pk = a < b ? a + '|' + b : b + '|' + a;
+            pairCounts[pk] = (pairCounts[pk] || 0) + 1;
+            if (w === 'tie') {
+                byId[a].ties += 1;
+                byId[b].ties += 1;
+            } else if (w === a) {
+                byId[a].wins += 1; byId[b].losses += 1;
+            } else if (w === b) {
+                byId[b].wins += 1; byId[a].losses += 1;
+            }
+        }
+
+        // 标准 Bradley-Terry MM（输入 counts + pairCounts）
+        const strength = computeBradleyTerry(byId, pairCounts);
+
+        const lutItems = lids.map(lid => ({
+            id: lid,
+            name: LUT_FILE_BY_LID[lid].name,
+            file: LUT_FILE_BY_LID[lid].file,
+            netWins: byId[lid].wins - byId[lid].losses,
+            strength: strength[lid] || 0
+        }));
+
+        const ranked = lutItems.slice().sort((p, q) => {
+            const d = q.strength - p.strength;
+            if (Math.abs(d) > 1e-9) return d;
+            return q.netWins - p.netWins;
+        });
+
+        // 分档：Top N + 余下按 tiers 分区（与排名站 ranking 配置一致）
+        const head = ranked.slice(0, RANK_TOP_N);
+        const rest = ranked.slice(RANK_TOP_N);
+        const tierGroups = [{ items: head }].concat(applyTiers(rest, RANK_TIERS));
+        const groupMeta = [
+            { id: 'top10', label: 'Top 10' },
+            { id: 'r11_15', label: '11-15' },
+            { id: 'r16_20', label: '16-20' },
+            { id: 'r21_26', label: '21-26' },
+            { id: 'r27_32', label: '27-32' }
+        ];
+        const groups = tierGroups.map((g, i) => {
+            const meta = groupMeta[i] || { id: 'tier' + (i + 1), label: 'Tier ' + (i + 1) };
+            return {
+                id: meta.id,
+                label: meta.label,
+                luts: g.items.map(it => ({
+                    name: it.name,
+                    file: it.file
+                }))
+            };
+        });
+        // rank 为全局连续序号
+        let r = 0;
+        groups.forEach(g => g.luts.forEach(l => { r += 1; l.rank = r; }));
+        return groups;
+    }
+
+    async function refreshRanking() {
+        const btn = document.getElementById('updateRankBtn');
+        const statusEl = document.getElementById('updateRankStatus');
+        btn.disabled = true;
+        btn.textContent = '更新中…';
+        statusEl.hidden = false;
+        statusEl.className = 'update-rank-status';
+        statusEl.textContent = '正在从排名站拉取最新数据…';
+        try {
+            const judgments = await fetchRankJudgments();
+            if (!Array.isArray(judgments) || judgments.length === 0) {
+                throw new Error('未获取到任何评判数据');
+            }
+            const groups = buildRankGroups(judgments);
+            const payload = {
+                dir: LUT_DIR,
+                source: 'https://lutrankingtest-3v7125w.maozi.io/result.html',
+                updated: new Date().toISOString().slice(0, 10),
+                groups: groups
+            };
+            localStorage.setItem(RANK_STORAGE_KEY, JSON.stringify(payload));
+            applyRankPayload(payload, true);
+            const t = new Date().toLocaleString('zh-CN', { hour12: false });
+            statusEl.className = 'update-rank-status is-ok';
+            statusEl.textContent = '已更新至最新排名（' + judgments.length + ' 条评判，' + t + '）';
+        } catch (e) {
+            console.error(e);
+            statusEl.className = 'update-rank-status is-err';
+            statusEl.textContent = '更新失败：' + (e && e.message ? e.message : e) + '（仍使用已加载的排名）';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '更新排名';
+        }
+    }
+
+    // 把分组 payload 应用到内存并重建 UI（overridden=true 表示来自实时更新）
+    function applyRankPayload(data, overridden) {
+        LUT_DIR = data.dir || LUT_DIR;
+        lutIndex = {};
+        categoryOrder = [];
+        GROUP_LABELS = {};
+        LUT_META = {};
+        for (const g of (data.groups || [])) {
+            const key = g.id;
+            categoryOrder.push(key);
+            GROUP_LABELS[key] = g.label || key;
+            lutIndex[key] = (g.luts || []).map(item => {
+                LUT_META[item.file] = { rank: item.rank, name: item.name };
+                return item.file;
+            });
+        }
+        buildPresets();
+        refreshPreloadState();
+        if (overridden) {
+            document.getElementById('presetCount').textContent =
+                categoryOrder.reduce((s, k) => s + (lutIndex[k] ? lutIndex[k].length : 0), 0) + ' presets · 实时';
+        }
+    }
+
+    function loadRankOverride() {
+        try {
+            const raw = localStorage.getItem(RANK_STORAGE_KEY);
+            if (!raw) return false;
+            const data = JSON.parse(raw);
+            if (!data || !Array.isArray(data.groups) || data.groups.length === 0) return false;
+            applyRankPayload(data, true);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    document.getElementById('updateRankBtn').addEventListener('click', refreshRanking);
+
+    // ---- URL params ----
+    function getUrlParam(name) {
+        const params = new URLSearchParams(location.search);
+        return params.get(name);
+    }
+
+    async function loadLutIndex() {
+        try {
+            const resp = await fetch('lut-list.json?v=10');
+            if (!resp.ok) throw new Error('Failed to load lut-list.json');
+            const data = await resp.json();
+            applyRankPayload(data, false);
+            // 若有本地实时更新缓存，则覆盖快照
+            loadRankOverride();
+            // 页面加载时自动拉取一次最新排名（每日至多一次，避免重复请求）
+            autoRefreshRankingOnce();
+        } catch (e) {
+            console.error('Failed to load lut-list.json:', e);
+            presetsScroll.innerHTML = '<div class="empty-state">无法加载预设列表</div>';
+        }
+    }
+
+    // 每日自动同步一次排名：用 localStorage 记录上次同步日期
+    function autoRefreshRankingOnce() {
+        try {
+            const today = new Date().toISOString().slice(0, 10);
+            const last = localStorage.getItem(RANK_STORAGE_KEY + '.autoDate');
+            if (last === today) return; // 今天已自动同步过
+            refreshRanking().finally(() => {
+                localStorage.setItem(RANK_STORAGE_KEY + '.autoDate', today);
+            });
+        } catch (e) { /* 忽略，不影响主流程 */ }
+    }
+
+    loadLutIndex();
+
+    const LUT_CACHE = 'lut-cache-v1';
+
+    // 统一用绝对地址（相对地址 + 中文文件名会让 Cache Storage 静默失败）
+    function lutAbsUrl(path) {
+        return new URL(LUT_BASE + '/' + path, location.href).href;
+    }
+
+    async function fetchLutFile(path) {
+        const url = lutAbsUrl(path);
+        if ('caches' in window) {
+            try {
+                const hit = await caches.match(url);
+                if (hit) return await hit.text();
+            } catch (e) { /* 缓存读取失败则走网络 */ }
+        }
+        let resp = await fetch(url);
+        if (!resp.ok) {
+            // 扩展名大小写容错：.cube <-> .CUBE（跨平台/大小写敏感服务器）
+            const altPath = path.replace(/\.cube$/i, m => m === '.cube' ? '.CUBE' : '.cube');
+            if (altPath !== path) {
+                resp = await fetch(lutAbsUrl(altPath));
+            }
+        }
+        if (!resp.ok) throw new Error('Failed to load: ' + path);
+        if ('caches' in window) {
+            try {
+                const clone = resp.clone();
+                const cache = await caches.open(LUT_CACHE);
+                await cache.put(url, clone);
+            } catch (e) { /* 缓存写入失败不影响使用 */ }
+        }
+        return await resp.text();
+    }
+
+    // 显式“预加载所有”：用户点击后顺序下载并写入缓存，带进度与取消
+    let preloadAborted = false;
+    let preloadController = null;
+
+    function allLutUrls() {
+        const seen = new Set();
+        const urls = [];
+        for (const key of categoryOrder) {
+            for (const f of (lutIndex[key] || [])) {
+                if (seen.has(f)) continue;
+                seen.add(f);
+                urls.push(lutAbsUrl(lutPath(f)));
+            }
+        }
+        return urls;
+    }
+
+    function setPreloadUI(state, done, total) {
+        if (state === 'idle') {
+            preloadBtn.hidden = false;
+            preloadProgress.hidden = true;
+            preloadBtn.textContent = '预加载所有';
+            preloadBtn.disabled = false;
+        } else if (state === 'running') {
+            preloadBtn.hidden = true;
+            preloadProgress.hidden = false;
+            const pct = total ? Math.round((done / total) * 100) : 0;
+            preloadBarFill.style.width = pct + '%';
+            preloadText.textContent = done + ' / ' + total + '  (' + pct + '%)';
+        } else if (state === 'done') {
+            preloadBtn.hidden = false;
+            preloadProgress.hidden = true;
+            preloadBtn.textContent = '✓ 已预加载 (' + done + '/' + total + ')';
+            preloadBtn.disabled = false;
+        }
+    }
+
+    // 进入页面时，根据已缓存情况刷新按钮文案
+    async function refreshPreloadState() {
+        if (!('caches' in window)) return;
+        const items = allLutUrls();
+        if (!items.length) return;
+        try {
+            const cache = await caches.open(LUT_CACHE);
+            let cached = 0;
+            for (const url of items) {
+                if (await cache.match(url)) cached++;
+            }
+            if (cached === items.length) {
+                setPreloadUI('done', cached, items.length);
+            } else if (cached > 0) {
+                preloadBtn.hidden = false;
+                preloadProgress.hidden = true;
+                preloadBtn.textContent = '继续预加载 (' + cached + '/' + items.length + ')';
+                preloadBtn.disabled = false;
+            }
+        } catch (e) { /* 忽略 */ }
+    }
+
+    async function preloadAll() {
+        if (!('caches' in window)) {
+            alert('当前浏览器不支持缓存预加载，请改用现代浏览器（Chrome / Edge / Firefox / Safari）。');
+            return;
+        }
+        const items = allLutUrls();
+        const total = items.length;
+        if (!total) return;
+
+        preloadAborted = false;
+        setPreloadUI('running', 0, total);
+        let done = 0;
+        try {
+            const cache = await caches.open(LUT_CACHE);
+            for (const url of items) {
+                if (preloadAborted) break;
+                try {
+                    const hit = await cache.match(url);
+                    if (!hit) {
+                        preloadController = new AbortController();
+                        const resp = await fetch(url, { signal: preloadController.signal });
+                        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                        await cache.put(url, resp.clone());
+                    }
+                } catch (e) {
+                    if (preloadAborted) break;
+                    console.warn('预加载失败（已跳过）:', url, e);
+                }
+                done++;
+                setPreloadUI('running', done, total);
+            }
+        } catch (e) {
+            console.error('预加载异常:', e);
+        } finally {
+            preloadController = null;
+        }
+        setPreloadUI(preloadAborted ? 'idle' : 'done', done, total);
+    }
+
+    function cancelPreload() {
+        preloadAborted = true;
+        if (preloadController) preloadController.abort();
+    }
+
+    async function loadLutContent(category, filename) {
+        return await fetchLutFile(lutPath(filename));
+    }
+
+    function formatLutName(category, filename) {
+        const meta = LUT_META[filename];
+        if (meta && meta.name) return meta.name;
+        const base = filename.replace(/\.(cube|CUBE)$/, '');
+        if (DISPLAY_MAP[category] && DISPLAY_MAP[category][base]) {
+            return DISPLAY_MAP[category][base];
+        }
+        return base;
+    }
+
+    function parseCubeFile(text) {
+        text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/^\uFEFF/, '');
+        const lines = text.split('\n').map(l => l.trim());
+        let size = 0;
+        const values = [];
+
+        for (const line of lines) {
+            if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+            const parts = line.split(/\s+/);
+            if (parts[0] === 'TITLE') continue;
+            if (parts[0] === 'DOMAIN_MIN' || parts[0] === 'DOMAIN_MAX') continue;
+            if (parts[0] === 'LUT_3D_SIZE') {
+                size = parseInt(parts[1]);
+                continue;
+            }
+            if (parts.length >= 3) {
+                const r = parseFloat(parts[0]);
+                const g = parseFloat(parts[1]);
+                const b = parseFloat(parts[2]);
+                if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+                    values.push(r, g, b);
+                }
+            }
+        }
+
+        if (!size || values.length !== size * size * size * 3) {
+            throw new Error('Invalid .cube file (size=' + size + ', values=' + values.length + ')');
+        }
+        return { size, table: new Float32Array(values) };
+    }
+
+    function applyLUTToPixels(srcPixels, w, h, lut) {
+        const { size, table } = lut;
+        const maxIdx = size - 1;
+        const n = size * size;
+        const dst = new Uint8ClampedArray(srcPixels.length);
+
+        for (let i = 0; i < srcPixels.length; i += 4) {
+            const r = srcPixels[i]     / 255;
+            const g = srcPixels[i + 1] / 255;
+            const b = srcPixels[i + 2] / 255;
+            const a = srcPixels[i + 3];
+
+            const rf = Math.min(r * maxIdx, maxIdx);
+            const gf = Math.min(g * maxIdx, maxIdx);
+            const bf = Math.min(b * maxIdx, maxIdx);
+
+            const r0 = Math.floor(rf);
+            const g0 = Math.floor(gf);
+            const b0 = Math.floor(bf);
+            const r1 = Math.min(r0 + 1, maxIdx);
+            const g1 = Math.min(g0 + 1, maxIdx);
+            const b1 = Math.min(b0 + 1, maxIdx);
+
+            const dr = rf - r0;
+            const dg = gf - g0;
+            const db = bf - b0;
+
+            const idx000 = (b0 * n + g0 * size + r0) * 3;
+            const idx100 = (b0 * n + g0 * size + r1) * 3;
+            const idx010 = (b0 * n + g1 * size + r0) * 3;
+            const idx110 = (b0 * n + g1 * size + r1) * 3;
+            const idx001 = (b1 * n + g0 * size + r0) * 3;
+            const idx101 = (b1 * n + g0 * size + r1) * 3;
+            const idx011 = (b1 * n + g1 * size + r0) * 3;
+            const idx111 = (b1 * n + g1 * size + r1) * 3;
+
+            for (let c = 0; c < 3; c++) {
+                const c00 = table[idx000 + c] * (1 - dr) + table[idx100 + c] * dr;
+                const c01 = table[idx001 + c] * (1 - dr) + table[idx101 + c] * dr;
+                const c10 = table[idx010 + c] * (1 - dr) + table[idx110 + c] * dr;
+                const c11 = table[idx011 + c] * (1 - dr) + table[idx111 + c] * dr;
+                const c0  = c00 * (1 - dg) + c10 * dg;
+                const c1  = c01 * (1 - dg) + c11 * dg;
+                const val = c0 * (1 - db) + c1 * db;
+                dst[i + c] = Math.round(Math.max(0, Math.min(1, val)) * 255);
+            }
+            dst[i + 3] = a;
+        }
+        return dst;
+    }
+
+    function renderCacheKey(lutKey) {
+        return (currentImageId || 'img') + '::' + (lutKey || selectedLutKey || 'original');
+    }
+
+    function previewDims() {
+        const nw = sourceImage.naturalWidth || sourceImage.width;
+        const nh = sourceImage.naturalHeight || sourceImage.height;
+        const scale = Math.min(1, PREVIEW_MAX / Math.max(nw, nh));
+        return { w: Math.max(1, Math.round(nw * scale)), h: Math.max(1, Math.round(nh * scale)) };
+    }
+
+    function render() {
+        if (!sourceImage) return;
+        const key = renderCacheKey();
+        const cached = renderCache.get(key);
+        if (cached) {
+            // 命中渲染缓存：直接绘制，跳过全图 getImageData + 逐像素应用
+            renderCache.delete(key);
+            renderCache.set(key, cached);
+            canvas.width = cached.width;
+            canvas.height = cached.height;
+            ctx.drawImage(cached, 0, 0);
+            return;
+        }
+        // 预览按降分辨率渲染（PREVIEW_MAX），导出时再单独跑全分辨率
+        const { w, h } = previewDims();
+        paintCanvas(canvas, w, h, lutData);
+        cacheRender(key, canvas);
+    }
+
+    // 把 sourceImage 按给定尺寸绘制并套用 LUT，写入 targetCanvas
+    function paintCanvas(targetCanvas, w, h, lut) {
+        targetCanvas.width = w;
+        targetCanvas.height = h;
+        const tctx = targetCanvas.getContext('2d');
+        tctx.drawImage(sourceImage, 0, 0, w, h);
+        if (lut) {
+            const imageData = tctx.getImageData(0, 0, w, h);
+            imageData.data.set(applyLUTToPixels(imageData.data, w, h, lut));
+            tctx.putImageData(imageData, 0, 0);
+        }
+    }
+
+    function cacheRender(key, srcCanvas) {
+        const off = document.createElement('canvas');
+        off.width = srcCanvas.width;
+        off.height = srcCanvas.height;
+        off.getContext('2d').drawImage(srcCanvas, 0, 0);
+        renderCache.set(key, off);
+        while (renderCache.size > RENDER_CACHE_MAX) {
+            const oldest = renderCache.keys().next().value;
+            renderCache.delete(oldest);
+        }
+    }
+
+    // 选图后后台预渲染全部风格（降分辨率），使之后点哪个都秒出
+    let prerenderToken = 0;
+    async function prerenderAll() {
+        if (!sourceImage || !categoryOrder || !lutIndex) return;
+        const token = ++prerenderToken;
+        const imgId = currentImageId || 'img';
+        const { w, h } = previewDims();
+        for (const key of categoryOrder) {
+            for (const fname of (lutIndex[key] || [])) {
+                if (token !== prerenderToken) return; // 图片已切换，中止后台任务
+                const styleKey = lutPath(fname);
+                const rk = imgId + '::' + styleKey;
+                if (renderCache.has(rk)) continue; // 已渲染（如用户已点过）
+                try {
+                    const text = await loadLutContent(key, fname);
+                    const pkey = styleKey;
+                    let lut = lutParseCache.get(pkey);
+                    if (!lut) { lut = parseCubeFile(text); lutParseCache.set(pkey, lut); }
+                    const off = document.createElement('canvas');
+                    paintCanvas(off, w, h, lut);
+                    renderCache.set(rk, off);
+                    while (renderCache.size > RENDER_CACHE_MAX) {
+                        const oldest = renderCache.keys().next().value;
+                        renderCache.delete(oldest);
+                    }
+                } catch (e) { console.warn('预渲染失败（已跳过）:', styleKey, e); }
+                await new Promise(r => setTimeout(r, 0)); // 让出主线程，避免卡顿
+            }
+        }
+    }
+
+    function buildPresets() {
+        if (!lutIndex) return;
+        presetsScroll.innerHTML = '';
+
+        let total = 0;
+        const categories = (categoryOrder || Object.keys(lutIndex)).map(key => {
+            return { key, label: getCategoryTitle(key) };
+        });
+
+        const allCategories = categories;
+
+        for (const cat of allCategories) {
+            const categoryEl = document.createElement('div');
+            categoryEl.className = 'preset-category cat-' + cat.key.replace(/\s+/g, '-');
+            const files = lutIndex[cat.key] || [];
+            if (!files.length) continue;
+            total += files.length;
+
+            const titleText = getCategoryTitle(cat.key);
+            if (titleText) {
+                categoryEl.innerHTML = '<div class="category-title">' + titleText
+                    + '<span class="tier-count">' + files.length + '</span></div>';
+            }
+
+            const list = document.createElement('div');
+            list.className = 'preset-list';
+
+            for (const fname of files) {
+                const display = formatLutName(cat.key, fname);
+                const key = lutPath(fname);
+                const item = document.createElement('div');
+                item.className = 'preset-item';
+                if (selectedLutKey === key) item.classList.add('selected');
+                item.innerHTML = `
+                    <div class="preset-badge" style="background:${getLutColor(cat.key, fname)}">${display.charAt(0)}</div>
+                    <div class="preset-info">
+                        <div class="preset-name">${display}</div>
+                        <div class="preset-category-label">${getLutDesc(cat.key, fname)}</div>
+                    </div>
+                    <div class="preset-check">✓</div>
+                `;
+                item.addEventListener('click', () => selectLut(cat.key, fname));
+                list.appendChild(item);
+            }
+
+            categoryEl.appendChild(list);
+            presetsScroll.appendChild(categoryEl);
+        }
+
+        presetCount.textContent = total + ' preset' + (total === 1 ? '' : 's');
+    }
+
+    async function selectLut(category, filename) {
+        currentStyleKey = lutPath(filename);
+        showOriginal = false;
+        updateOriginalSwitch();
+        selectedLutKey = currentStyleKey;
+        // 渲染缓存已命中时 Everything 都已本地就绪，无需再显示等待遮罩
+        const instant = renderCache.has(renderCacheKey());
+        if (!instant) loadingOverlay.classList.add('visible');
+        buildPresets();
+
+        try {
+            const text = await loadLutContent(category, filename);
+            const pkey = lutPath(filename);
+            let lut = lutParseCache.get(pkey);
+            if (!lut) {
+                lut = parseCubeFile(text);
+                lutParseCache.set(pkey, lut);
+            }
+            lutData = lut;
+            render();
+        } catch (err) {
+            alert('LUT 加载失败: ' + err.message);
+            selectedLutKey = null;
+            lutData = null;
+            buildPresets();
+        } finally {
+            loadingOverlay.classList.remove('visible');
+        }
+    }
+
+    function updateOriginalSwitch() {
+        originalSwitch.classList.toggle('on', showOriginal);
+        originalSwitch.setAttribute('aria-checked', showOriginal ? 'true' : 'false');
+    }
+
+    // 原图开关：on=显示原图，off=显示当前选中的风格
+    function setShowOriginal(on) {
+        showOriginal = on;
+        updateOriginalSwitch();
+        if (on) {
+            selectedLutKey = null;
+            lutData = null;
+            buildPresets();
+            render();
+        } else {
+            if (!currentStyleKey) currentStyleKey = getFirstStyleKey();
+            if (currentStyleKey) {
+                const [cat, fname] = splitStyleKey(currentStyleKey);
+                selectLut(cat, fname);
+            } else {
+                selectedLutKey = null;
+                lutData = null;
+                buildPresets();
+                render();
+            }
+        }
+    }
+
+    function setImageLoaded(img, name) {
+        // 换了图片，旧的渲染缓存（按 imageId 区分）已失效，清空释放内存
+        renderCache.clear();
+        sourceImage = img;
+        hasImage = true;
+        preview.classList.add('has-image');
+        canvas.classList.add('visible');
+        downloadBtn.disabled = false;
+        currentImageName = name || 'image.jpg';
+        // 默认选中第一个风格，原图开关关闭
+        currentStyleKey = getFirstStyleKey();
+        showOriginal = false;
+        updateOriginalSwitch();
+        if (currentStyleKey) {
+            const [cat, fname] = splitStyleKey(currentStyleKey);
+            selectLut(cat, fname);
+        } else {
+            selectedLutKey = null;
+            lutData = null;
+            buildPresets();
+            render();
+        }
+        // 选图后后台预渲染全部风格，使之后点哪个都秒出（不再有"应用Lut中"）
+        prerenderAll();
+    }
+
+    async function loadImageFromDB(id) {
+        const item = await getImage(id);
+        if (!item) {
+            alert('找不到该图片，将返回列表');
+            location.href = 'index.html';
+            return;
+        }
+        currentImageId = id;
+        currentImageName = item.name;
+        const img = new Image();
+        img.onload = () => setImageLoaded(img, item.name);
+        img.src = item.dataUrl;
+    }
+
+    async function handleImageFile(file) {
+        if (!file || !file.type.startsWith('image/')) {
+            alert('请选择有效的图片文件（JPG / PNG / WebP）');
+            return;
+        }
+        try {
+            const dataUrl = await fileToDataUrl(file);
+            const id = await saveImage(file.name, dataUrl);
+            location.href = 'editor.html?id=' + encodeURIComponent(id);
+        } catch (err) {
+            alert('图片保存失败: ' + err.message);
+        }
+    }
+
+    function downloadImage() {
+        if (!hasImage) return;
+        const link = document.createElement('a');
+        const base = currentImageName.replace(/\.[^/.]+$/, '');
+        const lutSuffix = selectedLutKey
+            ? '-' + selectedLutKey.replace(/\//g, '-').replace(/\.(cube|CUBE)$/, '')
+            : '-original';
+        link.download = base + lutSuffix + '.jpg';
+        // 导出用原图全分辨率渲染（不受预览降分辨率影响）；JPG 不支持透明通道，先铺白底
+        const nw = sourceImage.naturalWidth || sourceImage.width;
+        const nh = sourceImage.naturalHeight || sourceImage.height;
+        const out = document.createElement('canvas');
+        out.width = nw;
+        out.height = nh;
+        const octx = out.getContext('2d');
+        octx.fillStyle = '#ffffff';
+        octx.fillRect(0, 0, nw, nh);
+        octx.drawImage(sourceImage, 0, 0, nw, nh);
+        if (lutData) {
+            const imageData = octx.getImageData(0, 0, nw, nh);
+            imageData.data.set(applyLUTToPixels(imageData.data, nw, nh, lutData));
+            octx.putImageData(imageData, 0, 0);
+        }
+        link.href = out.toDataURL('image/jpeg', 0.92);
+        link.click();
+    }
+
+    async function deleteCurrentImage() {
+        if (!currentImageId) return;
+        if (!confirm('确定要删除这张图片吗？')) return;
+        try {
+            await deleteImage(currentImageId);
+            location.href = 'index.html';
+        } catch (err) {
+            alert('删除失败: ' + err.message);
+        }
+    }
+
+    // ---- Events ----
+    backBtn.addEventListener('click', () => location.href = 'index.html');
+    uploadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        imageInput.click();
+    });
+    downloadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        downloadImage();
+    });
+    deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteCurrentImage();
+    });
+
+    preview.addEventListener('click', () => imageInput.click());
+    originalToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setShowOriginal(!showOriginal);
+    });
+    preloadBtn.addEventListener('click', preloadAll);
+    preloadCancel.addEventListener('click', cancelPreload);
+
+    imageInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) handleImageFile(e.target.files[0]);
+    });
+
+    preview.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        preview.classList.add('drag-over');
+    });
+
+    preview.addEventListener('dragleave', () => {
+        preview.classList.remove('drag-over');
+    });
+
+    preview.addEventListener('drop', (e) => {
+        e.preventDefault();
+        preview.classList.remove('drag-over');
+        if (e.dataTransfer.files.length > 0) handleImageFile(e.dataTransfer.files[0]);
+    });
+
+    // ---- Init ----
+    const imageId = getUrlParam('id');
+    if (imageId) {
+        loadImageFromDB(imageId);
+    }
+</script>
+
+</body>
+</html>
