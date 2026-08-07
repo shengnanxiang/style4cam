@@ -632,6 +632,12 @@
                 <div class="sidebar-btn-row">
                     <button class="preload-btn" id="preloadDownloadBtn" type="button">预加载</button>
                 </div>
+                <div class="preload-progress" id="preloadDownloadProgress" hidden>
+                    <div class="preload-bar"><div class="preload-bar-fill" id="preloadDownloadBarFill"></div></div>
+                    <div class="preload-meta">
+                        <span class="preload-text" id="preloadDownloadText">0 / 0</span>
+                    </div>
+                </div>
             </div>
             <div class="presets-scroll" id="downloadListScroll">
                 <div class="empty-state">加载下载预设中...</div>
@@ -833,6 +839,9 @@
     const downloadListScroll = document.getElementById('downloadListScroll');
     const downloadCount = document.getElementById('downloadCount');
     const preloadDownloadBtn = document.getElementById('preloadDownloadBtn');
+    const preloadDownloadProgress = document.getElementById('preloadDownloadProgress');
+    const preloadDownloadBarFill = document.getElementById('preloadDownloadBarFill');
+    const preloadDownloadText = document.getElementById('preloadDownloadText');
     const presetCount = document.getElementById('presetCount');
     const preloadBtn = document.getElementById('preloadBtn');
     const preloadProgress = document.getElementById('preloadProgress');
@@ -1817,6 +1826,9 @@
     function buildDownloadList() {
         downloadListScroll.innerHTML = '';
         downloadCount.textContent = downloadLuts.length + ' preset' + (downloadLuts.length === 1 ? '' : 's');
+        preloadDownloadBtn.hidden = false;
+        preloadDownloadProgress.hidden = true;
+        preloadDownloadBtn.textContent = '预加载';
         const list = document.createElement('div');
         list.className = 'preset-list';
         for (const fname of downloadLuts) {
@@ -1868,29 +1880,41 @@
         const imgId = currentImageId || 'img';
         const { w, h } = previewDims();
         const savedLut = lutData, savedLight = currentLightAlg, savedGrain = currentGrainAlg;
-        preloadDownloadBtn.textContent = '预加载中…';
-        preloadDownloadBtn.disabled = true;
+        const total = downloadLuts.length;
+        preloadDownloadBtn.hidden = true;
+        preloadDownloadProgress.hidden = false;
+        let done = 0;
+        const setDlProg = () => {
+            const pct = total ? Math.round((done / total) * 100) : 0;
+            preloadDownloadBarFill.style.width = pct + '%';
+            preloadDownloadText.textContent = done + ' / ' + total + '  (' + pct + '%)';
+        };
+        setDlProg();
         for (const fname of downloadLuts) {
             const key = downloadPath(fname);
             const rk = imgId + '::' + key + '::none::none';
-            if (renderCache.has(rk)) continue;
-            try {
-                const text = await fetchLutFile(key);
-                const lut = parseCubeFile(text);
-                lutData = lut; currentLightAlg = null; currentGrainAlg = null;
-                const off = document.createElement('canvas');
-                paintCanvas(off, w, h);
-                renderCache.set(rk, off);
-                while (renderCache.size > RENDER_CACHE_MAX) {
-                    const oldest = renderCache.keys().next().value;
-                    renderCache.delete(oldest);
-                }
-            } catch (e) { console.warn('下载风格预渲染失败（已跳过）:', fname, e); }
+            if (!renderCache.has(rk)) {
+                try {
+                    const text = await fetchLutFile(key);
+                    const lut = parseCubeFile(text);
+                    lutData = lut; currentLightAlg = null; currentGrainAlg = null;
+                    const off = document.createElement('canvas');
+                    paintCanvas(off, w, h);
+                    renderCache.set(rk, off);
+                    while (renderCache.size > RENDER_CACHE_MAX) {
+                        const oldest = renderCache.keys().next().value;
+                        renderCache.delete(oldest);
+                    }
+                } catch (e) { console.warn('下载风格预渲染失败（已跳过）:', fname, e); }
+            }
+            done++;
+            setDlProg();
             await new Promise(r => setTimeout(r, 0));
         }
         lutData = savedLut; currentLightAlg = savedLight; currentGrainAlg = savedGrain;
-        preloadDownloadBtn.textContent = '已预加载 ✓';
-        preloadDownloadBtn.disabled = false;
+        preloadDownloadBtn.hidden = false;
+        preloadDownloadProgress.hidden = true;
+        preloadDownloadBtn.textContent = '✓ 已预加载 (' + done + '/' + total + ')';
     }
 
     // ---- 光影 / 颗粒 列表渲染 ----
