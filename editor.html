@@ -1321,7 +1321,8 @@
     }
 
     async function loadLutContent(category, filename) {
-        return await fetchLutFile(lutPath(filename));
+        const path = category === DOWNLOAD_DIR ? downloadPath(filename) : lutPath(filename);
+        return await fetchLutFile(path);
     }
 
     function formatLutName(category, filename) {
@@ -1953,7 +1954,8 @@
     }
 
     async function selectLut(category, filename) {
-        currentStyleKey = lutPath(filename);
+        const key = category === DOWNLOAD_DIR ? downloadPath(filename) : lutPath(filename);
+        currentStyleKey = key;
         showOriginal = false;
         updateOriginalSwitch();
         selectedLutKey = currentStyleKey;
@@ -1965,7 +1967,7 @@
 
         try {
             const text = await loadLutContent(category, filename);
-            const pkey = lutPath(filename);
+            const pkey = key;
             let lut = lutParseCache.get(pkey);
             if (!lut) {
                 lut = parseCubeFile(text);
