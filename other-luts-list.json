@@ -1,8 +1,33 @@
 {
   "dir": "other luts",
-  "files": [
-    "Kodak Ektar 100.cube",
-    "Kodak Gold 100 _ 04 Skin Tones.cube",
-    "Kodak Portra 800 _ Skin Tones GR.cube"
+  "groups": [
+    {
+      "label": "Kodak",
+      "dir": "Kodak",
+      "files": [
+        "Kodak Ektar 100.cube",
+        "Kodak Gold 100.cube",
+        "Kodak Portra 800.cube"
+      ]
+    },
+    {
+      "label": "实验工艺系列",
+      "dir": "实验工艺系列",
+      "files": [
+        "凹版印相.cube",
+        "铂金印相1.cube",
+        "铂金印相2.cube",
+        "达盖尔银版法1.cube",
+        "达盖尔银版法2.cube",
+        "蛋白银盐法1.cube",
+        "蛋白银盐法2.cube",
+        "蛋白银盐法3.cube",
+        "经典蓝晒法1.cube",
+        "经典蓝晒法2.cube",
+        "明胶银盐.cube",
+        "湿板火棉胶工艺1.cube",
+        "湿板火棉胶工艺2.cube"
+      ]
+    }
   ]
 }

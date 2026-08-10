@@ -1,4 +1,4 @@
-<!-- build: 2026-08-03 fix-lID-mapping (align LUT_FILE_BY_LID with ranking site config.js) -->
+<!-- build: 2026-08-10 rename-tabs-and-group-download (排名风格/其它风格 + 子文件夹分组) -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -583,8 +583,8 @@
 
     <aside class="sidebar">
         <div class="tabs">
-            <div class="tab active" data-tab="style" id="tabStyle">自制风格</div>
-            <div class="tab" data-tab="download" id="tabDownload">下载风格</div>
+            <div class="tab active" data-tab="style" id="tabStyle">排名风格</div>
+            <div class="tab" data-tab="download" id="tabDownload">其它风格</div>
             <div class="tab" data-tab="light" id="tabLight">光影</div>
             <div class="tab" data-tab="grain" id="tabGrain">颗粒</div>
         </div>
@@ -625,7 +625,7 @@
             </div>
         </div>
 
-        <!-- 下载风格面板 -->
+        <!-- 其它风格面板 -->
         <div class="tab-panel" id="panelDownload">
             <div class="sidebar-header">
                 <div class="sidebar-count" id="downloadCount">0 presets</div>
@@ -657,9 +657,10 @@
     let GROUP_LABELS = {};
     let LUT_META = {}; // filename -> { rank, name }
 
-    // 下载风格：来自独立的 other luts/ 目录，按文件名排序扁平展示，无排名
+    // 其它风格：来自独立的 other luts/ 目录，按子文件夹分组展示，无排名
     const DOWNLOAD_DIR = 'other luts';
-    let downloadLuts = []; // 文件名数组（已按文件名排序）
+    let downloadGroups = []; // [{ label, dir, files: [filename,...] }]
+    let downloadLuts = []; // 扁平文件名数组（含子文件夹路径，如 "Kodak/xxx.cube"）
     function downloadPath(filename) {
         return DOWNLOAD_DIR + '/' + filename;
     }
@@ -1810,48 +1811,79 @@
         presetCount.textContent = total + ' preset' + (total === 1 ? '' : 's');
     }
 
-    // ---- 下载风格：读取 other luts/ 目录清单并渲染扁平列表 ----
+    // ---- 其它风格：读取 other luts/ 目录清单并按子文件夹分组渲染 ----
+    // 清单格式见 other-luts-list.json：{ dir, groups:[{ label, dir, files:[...] }] }
+    // files 中的文件名若不含 "/"，表示该组子文件夹下的文件；含 "/" 则视为相对 other luts 的路径
     async function loadDownloadList() {
         try {
             const res = await fetch(lutAbsUrl('other-luts-list.json'), { cache: 'no-cache' });
             if (!res.ok) throw new Error('清单读取失败');
             const data = await res.json();
-            downloadLuts = (data.files || []).slice();
+            const groups = (data.groups || []).map(g => {
+                const baseDir = g.dir || '';
+                return {
+                    label: g.label || baseDir || '其它',
+                    dir: baseDir,
+                    files: (g.files || []).map(f => baseDir ? baseDir + '/' + f : f)
+                };
+            }).filter(g => g.files.length);
+            downloadGroups = groups;
+            downloadLuts = groups.reduce((acc, g) => acc.concat(g.files), []);
             buildDownloadList();
         } catch (e) {
-            console.warn('下载风格清单加载失败:', e);
-            downloadListScroll.innerHTML = '<div class="empty-state">下载风格清单加载失败</div>';
+            console.warn('其它风格清单加载失败:', e);
+            downloadListScroll.innerHTML = '<div class="empty-state">其它风格清单加载失败</div>';
         }
     }
 
     function buildDownloadList() {
         downloadListScroll.innerHTML = '';
         downloadCount.textContent = downloadLuts.length + ' preset' + (downloadLuts.length === 1 ? '' : 's');
-        preloadDownloadBtn.hidden = false;
+        preloadDownloadBtn.hidden = downloadLuts.length === 0;
         preloadDownloadProgress.hidden = true;
         preloadDownloadBtn.textContent = '预加载';
-        const list = document.createElement('div');
-        list.className = 'preset-list';
-        for (const fname of downloadLuts) {
-            const key = downloadPath(fname);
-            const item = document.createElement('div');
-            item.className = 'preset-item' + (selectedLutKey === key ? ' selected' : '');
-            item.dataset.key = key;
-            const nameEl = document.createElement('div');
-            nameEl.className = 'preset-name';
-            nameEl.textContent = fname.replace(/\.cube$/i, '');
-            const check = document.createElement('span');
-            check.className = 'preset-check';
-            check.textContent = '✓';
-            item.appendChild(nameEl);
-            item.appendChild(check);
-            item.addEventListener('click', () => selectDownloadLut(fname));
-            list.appendChild(item);
+
+        if (!downloadGroups.length) {
+            downloadListScroll.innerHTML = '<div class="empty-state">暂无其它风格</div>';
+            return;
         }
-        downloadListScroll.appendChild(list);
+
+        for (const grp of downloadGroups) {
+            const categoryEl = document.createElement('div');
+            categoryEl.className = 'preset-category cat-download';
+            categoryEl.innerHTML = '<div class="category-title">' + escapeHtml(grp.label)
+                + '<span class="tier-count">' + grp.files.length + '</span></div>';
+
+            const list = document.createElement('div');
+            list.className = 'preset-list';
+            for (const fname of grp.files) {
+                const key = downloadPath(fname);
+                const item = document.createElement('div');
+                item.className = 'preset-item' + (selectedLutKey === key ? ' selected' : '');
+                item.dataset.key = key;
+                const nameEl = document.createElement('div');
+                nameEl.className = 'preset-name';
+                nameEl.textContent = fname.split('/').pop().replace(/\.cube$/i, '');
+                const check = document.createElement('span');
+                check.className = 'preset-check';
+                check.textContent = '✓';
+                item.appendChild(nameEl);
+                item.appendChild(check);
+                item.addEventListener('click', () => selectDownloadLut(fname));
+                list.appendChild(item);
+            }
+            categoryEl.appendChild(list);
+            downloadListScroll.appendChild(categoryEl);
+        }
     }
 
-    // 选中下载风格：与自制风格互斥（selectedLutKey 唯一）
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    // 选中其它风格：与排名风格互斥（selectedLutKey 唯一）
     async function selectDownloadLut(filename) {
         showOriginal = false;
         updateOriginalSwitch();
@@ -1866,7 +1898,7 @@
             const lut = parseCubeFile(text);
             lutData = lut;
         } catch (e) {
-            console.warn('下载风格加载失败:', filename, e);
+            console.warn('其它风格加载失败:', filename, e);
             return;
         }
         // 互斥：重建两边列表以更新高亮
@@ -1875,7 +1907,7 @@
         render();
     }
 
-    // 后台预渲染下载风格全部预设（无排名），仅预加载该维度
+    // 后台预渲染其它风格全部预设（无排名），仅预加载该维度
     async function prerenderDownload() {
         if (!sourceImage || downloadLuts.length === 0) return;
         const imgId = currentImageId || 'img';
@@ -1906,7 +1938,7 @@
                         const oldest = renderCache.keys().next().value;
                         renderCache.delete(oldest);
                     }
-                } catch (e) { console.warn('下载风格预渲染失败（已跳过）:', fname, e); }
+                } catch (e) { console.warn('其它风格预渲染失败（已跳过）:', fname, e); }
             }
             done++;
             setDlProg();
@@ -2188,7 +2220,7 @@
     preloadCancel.addEventListener('click', cancelPreload);
     preloadDownloadBtn.addEventListener('click', prerenderDownload);
 
-    // ---- Tab 切换（自制风格 / 下载风格 / 光影 / 颗粒） ----
+    // ---- Tab 切换（排名风格 / 其它风格 / 光影 / 颗粒） ----
     const tabs = document.querySelectorAll('.tab');
     const panels = { style: panelStyle, download: panelDownload, light: panelLight, grain: panelGrain };
     function switchTab(name) {
