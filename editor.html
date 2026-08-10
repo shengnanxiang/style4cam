@@ -463,31 +463,32 @@
             transform: scale(1);
         }
 
-        /* ---- Tabs (风格 / 光影 / 颗粒) ---- */
+        /* ---- Tabs (风格 / 光影 / 颗粒) —— 扁平风格 ---- */
         .tabs {
             display: flex;
-            gap: 6px;
-            padding: 14px 14px 0;
+            gap: 0;
+            padding: 0;
             flex: 0 0 auto;
+            background: #141414;
         }
         .tab {
             flex: 1 1 0;
-            padding: 9px 0;
+            padding: 12px 0;
             text-align: center;
             font-size: 13px;
             font-weight: 600;
             color: var(--text-dim);
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid var(--border);
-            border-bottom: none;
-            border-radius: 9px 9px 0 0;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
             cursor: pointer;
-            transition: color 0.15s, background 0.15s;
+            transition: color 0.15s, background 0.15s, border-color 0.15s;
         }
-        .tab:hover { color: var(--text); }
+        .tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
         .tab.active {
-            color: var(--accent);
+            color: #fff;
             background: var(--panel-bg);
+            border-bottom-color: var(--accent);
         }
         .tab-panel {
             display: none;
