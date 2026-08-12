@@ -1993,6 +1993,13 @@
         }[c]));
     }
 
+    // 仅更新其它风格列表的选中高亮，不重建 DOM（避免重置分组折叠状态）
+    function updateDownloadSelection() {
+        downloadListScroll.querySelectorAll('.preset-item').forEach(item => {
+            item.classList.toggle('selected', item.dataset.key === selectedLutKey);
+        });
+    }
+
     // 选中其它风格：与排名风格互斥（selectedLutKey 唯一）
     async function selectDownloadLut(filename) {
         showOriginal = false;
@@ -2011,9 +2018,9 @@
             console.warn('其它风格加载失败:', filename, e);
             return;
         }
-        // 互斥：重建两边列表以更新高亮
+        // 互斥：更新两边列表的高亮（不重建，保留折叠状态）
         buildPresets();
-        buildDownloadList();
+        updateDownloadSelection();
         render();
     }
 
@@ -2168,7 +2175,7 @@
         const instant = renderCache.has(renderCacheKey());
         if (!instant) loadingOverlay.classList.add('visible');
         buildPresets();
-        buildDownloadList();
+        updateDownloadSelection();
 
         try {
             const text = await loadLutContent(category, filename);
@@ -2185,7 +2192,7 @@
             selectedLutKey = null;
             lutData = null;
             buildPresets();
-            buildDownloadList();
+            updateDownloadSelection();
         } finally {
             loadingOverlay.classList.remove('visible');
         }
