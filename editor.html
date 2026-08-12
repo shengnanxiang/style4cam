@@ -1365,7 +1365,53 @@
         if (!size || values.length !== size * size * size * 3) {
             throw new Error('Invalid .cube file (size=' + size + ', values=' + values.length + ')');
         }
-        return { size, table: new Float32Array(values) };
+        let table = new Float32Array(values);
+        // 低分辨率 LUT（size < 33）升采样到 33：三线性插值，避免小尺寸 LUT 套用出现明显色阶断裂
+        if (size < 33) {
+            const TARGET = 33;
+            const srcN = size;
+            const out = new Float32Array(TARGET * TARGET * TARGET * 3);
+            const n = TARGET * TARGET;
+            const s = new Float32Array(3);
+            for (let b = 0; b < TARGET; b++) {
+                for (let g = 0; g < TARGET; g++) {
+                    for (let r = 0; r < TARGET; r++) {
+                        s[0] = (r / (TARGET - 1)) * (srcN - 1);
+                        s[1] = (g / (TARGET - 1)) * (srcN - 1);
+                        s[2] = (b / (TARGET - 1)) * (srcN - 1);
+                        const r0 = Math.min(Math.floor(s[0]), srcN - 1);
+                        const g0 = Math.min(Math.floor(s[1]), srcN - 1);
+                        const b0 = Math.min(Math.floor(s[2]), srcN - 1);
+                        const r1 = Math.min(r0 + 1, srcN - 1);
+                        const g1 = Math.min(g0 + 1, srcN - 1);
+                        const b1 = Math.min(b0 + 1, srcN - 1);
+                        const dr = s[0] - r0, dg = s[1] - g0, db = s[2] - b0;
+                        const nn = srcN * srcN;
+                        const i000 = (b0 * nn + g0 * srcN + r0) * 3;
+                        const i100 = (b0 * nn + g0 * srcN + r1) * 3;
+                        const i010 = (b0 * nn + g1 * srcN + r0) * 3;
+                        const i110 = (b0 * nn + g1 * srcN + r1) * 3;
+                        const i001 = (b1 * nn + g0 * srcN + r0) * 3;
+                        const i101 = (b1 * nn + g0 * srcN + r1) * 3;
+                        const i011 = (b1 * nn + g1 * srcN + r0) * 3;
+                        const i111 = (b1 * nn + g1 * srcN + r1) * 3;
+                        const oi = (b * n + g * TARGET + r) * 3;
+                        for (let c = 0; c < 3; c++) {
+                            const c00 = table[i000 + c] * (1 - dr) + table[i100 + c] * dr;
+                            const c01 = table[i001 + c] * (1 - dr) + table[i101 + c] * dr;
+                            const c10 = table[i010 + c] * (1 - dr) + table[i110 + c] * dr;
+                            const c11 = table[i011 + c] * (1 - dr) + table[i111 + c] * dr;
+                            const c0 = c00 * (1 - dg) + c10 * dg;
+                            const c1 = c01 * (1 - dg) + c11 * dg;
+                            out[oi + c] = c0 * (1 - db) + c1 * db;
+                        }
+                    }
+                }
+            }
+            table = out;
+            size = TARGET;
+        }
+        return { size, table };
     }
 
     function applyLUTToPixels(srcPixels, w, h, lut) {
