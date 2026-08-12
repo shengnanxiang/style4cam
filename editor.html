@@ -533,6 +533,45 @@
             margin-left: 6px;
         }
 
+        /* ---- 其它风格：可折叠分组 ---- */
+        .cat-download .category-title {
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 10px;
+            margin: 0 0 8px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            transition: background 0.15s;
+        }
+        .cat-download .category-title:hover {
+            background: rgba(255, 255, 255, 0.09);
+        }
+        .cat-download .category-title-left {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+        }
+        .cat-download .cat-arrow {
+            display: inline-block;
+            font-size: 10px;
+            color: var(--text-dim);
+            transition: transform 0.15s;
+            flex-shrink: 0;
+        }
+        .cat-download .cat-label {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .cat-download.cat-open .cat-arrow { transform: rotate(90deg); }
+        .cat-download .preset-list { margin: 0 4px; }
+        .cat-download.cat-collapsed .preset-list { display: none; }
+
         /* Mobile */
         @media (max-width: 768px) {
             .toolbar { width: 52px; }
@@ -1895,11 +1934,25 @@
             return;
         }
 
-        for (const grp of downloadGroups) {
+        downloadGroups.forEach((grp, gi) => {
             const categoryEl = document.createElement('div');
-            categoryEl.className = 'preset-category cat-download';
-            categoryEl.innerHTML = '<div class="category-title">' + escapeHtml(grp.label)
-                + '<span class="tier-count">' + grp.files.length + '</span></div>';
+            categoryEl.className = 'preset-category cat-download'
+                + (gi === 0 ? ' cat-open' : ' cat-collapsed');
+            const title = document.createElement('div');
+            title.className = 'category-title';
+            const titleLeft = document.createElement('span');
+            titleLeft.className = 'category-title-left';
+            titleLeft.innerHTML = '<span class="cat-arrow">▸</span>'
+                + '<span class="cat-label">' + escapeHtml(grp.label) + '</span>';
+            const count = document.createElement('span');
+            count.className = 'tier-count';
+            count.textContent = grp.files.length;
+            title.appendChild(titleLeft);
+            title.appendChild(count);
+            title.addEventListener('click', () => {
+                categoryEl.classList.toggle('cat-collapsed');
+                categoryEl.classList.toggle('cat-open');
+            });
 
             const list = document.createElement('div');
             list.className = 'preset-list';
@@ -1919,9 +1972,10 @@
                 item.addEventListener('click', () => selectDownloadLut(fname));
                 list.appendChild(item);
             }
+            categoryEl.appendChild(title);
             categoryEl.appendChild(list);
             downloadListScroll.appendChild(categoryEl);
-        }
+        });
     }
 
     function escapeHtml(s) {
