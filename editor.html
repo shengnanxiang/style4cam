@@ -701,6 +701,7 @@
     const DOWNLOAD_DIR = 'other luts';
     let downloadGroups = []; // [{ label, dir, files: [filename,...] }]
     let downloadLuts = []; // 扁平文件名数组（含子文件夹路径，如 "Kodak/xxx.cube"）
+    let downloadOpenDirs = new Set(); // 已展开的其它风格分组（按 grp.dir），重建列表时保持状态
     function downloadPath(filename) {
         return DOWNLOAD_DIR + '/' + filename;
     }
@@ -1915,6 +1916,8 @@
             }).filter(g => g.files.length);
             downloadGroups = groups;
             downloadLuts = groups.reduce((acc, g) => acc.concat(g.files), []);
+            // 首次加载：默认只展开第一个分组，其余收起；记录状态以便重建列表时保持
+            downloadOpenDirs = new Set(downloadGroups.length ? [downloadGroups[0].dir] : []);
             buildDownloadList();
             refreshDownloadPreloadState();
         } catch (e) {
@@ -1934,10 +1937,11 @@
             return;
         }
 
-        downloadGroups.forEach((grp, gi) => {
+        downloadGroups.forEach((grp) => {
             const categoryEl = document.createElement('div');
+            const isOpen = downloadOpenDirs.has(grp.dir);
             categoryEl.className = 'preset-category cat-download'
-                + (gi === 0 ? ' cat-open' : ' cat-collapsed');
+                + (isOpen ? ' cat-open' : ' cat-collapsed');
             const title = document.createElement('div');
             title.className = 'category-title';
             const titleLeft = document.createElement('span');
@@ -1950,6 +1954,11 @@
             title.appendChild(titleLeft);
             title.appendChild(count);
             title.addEventListener('click', () => {
+                if (downloadOpenDirs.has(grp.dir)) {
+                    downloadOpenDirs.delete(grp.dir);
+                } else {
+                    downloadOpenDirs.add(grp.dir);
+                }
                 categoryEl.classList.toggle('cat-collapsed');
                 categoryEl.classList.toggle('cat-open');
             });
