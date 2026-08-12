@@ -1831,6 +1831,7 @@
             downloadGroups = groups;
             downloadLuts = groups.reduce((acc, g) => acc.concat(g.files), []);
             buildDownloadList();
+            refreshDownloadPreloadState();
         } catch (e) {
             console.warn('其它风格清单加载失败:', e);
             downloadListScroll.innerHTML = '<div class="empty-state">其它风格清单加载失败</div>';
@@ -1842,7 +1843,6 @@
         downloadCount.textContent = downloadLuts.length + ' preset' + (downloadLuts.length === 1 ? '' : 's');
         preloadDownloadBtn.hidden = downloadLuts.length === 0;
         preloadDownloadProgress.hidden = true;
-        preloadDownloadBtn.textContent = '预加载';
 
         if (!downloadGroups.length) {
             downloadListScroll.innerHTML = '<div class="empty-state">暂无其它风格</div>';
@@ -1908,26 +1908,94 @@
         render();
     }
 
-    // 后台预渲染其它风格全部预设（无排名），仅预加载该维度
-    async function prerenderDownload() {
-        if (!sourceImage || downloadLuts.length === 0) return;
-        const imgId = currentImageId || 'img';
-        const { w, h } = previewDims();
-        const savedLut = lutData, savedLight = currentLightAlg, savedGrain = currentGrainAlg;
-        const total = downloadLuts.length;
-        preloadDownloadBtn.hidden = true;
-        preloadDownloadProgress.hidden = false;
-        let done = 0;
-        const setDlProg = () => {
+    // 下载风格的全部 LUT 绝对 URL（用于缓存预加载与状态检查）
+    function downloadLutUrls() {
+        return downloadLuts.map(f => lutAbsUrl(downloadPath(f)));
+    }
+
+    function setDownloadPreloadUI(state, done, total) {
+        if (state === 'idle') {
+            preloadDownloadBtn.hidden = false;
+            preloadDownloadProgress.hidden = true;
+            preloadDownloadBtn.textContent = '预加载';
+            preloadDownloadBtn.disabled = false;
+        } else if (state === 'running') {
+            preloadDownloadBtn.hidden = true;
+            preloadDownloadProgress.hidden = false;
             const pct = total ? Math.round((done / total) * 100) : 0;
             preloadDownloadBarFill.style.width = pct + '%';
             preloadDownloadText.textContent = done + ' / ' + total + '  (' + pct + '%)';
-        };
-        setDlProg();
-        for (const fname of downloadLuts) {
-            const key = downloadPath(fname);
-            const rk = imgId + '::' + key + '::none::none';
-            if (!renderCache.has(rk)) {
+        } else if (state === 'done') {
+            preloadDownloadBtn.hidden = false;
+            preloadDownloadProgress.hidden = true;
+            preloadDownloadBtn.textContent = '✓ 已预加载 (' + done + '/' + total + ')';
+            preloadDownloadBtn.disabled = false;
+        }
+    }
+
+    // 进入页面时，根据 Cache Storage 命中情况刷新下载风格按钮文案（与自制风格一致，刷新后保留）
+    async function refreshDownloadPreloadState() {
+        if (!('caches' in window)) return;
+        const items = downloadLutUrls();
+        if (!items.length) return;
+        try {
+            const cache = await caches.open(LUT_CACHE);
+            let cached = 0;
+            for (const url of items) {
+                if (await cache.match(url)) cached++;
+            }
+            if (cached === items.length) {
+                setDownloadPreloadUI('done', cached, items.length);
+            } else if (cached > 0) {
+                preloadDownloadBtn.hidden = false;
+                preloadDownloadProgress.hidden = true;
+                preloadDownloadBtn.textContent = '继续预加载 (' + cached + '/' + items.length + ')';
+                preloadDownloadBtn.disabled = false;
+            }
+        } catch (e) { /* 忽略 */ }
+    }
+
+    // 预加载其它风格：先把全部 .cube 写入 Cache Storage（刷新后保持已完成状态），若有图再预渲染到内存缓存实现秒出
+    async function prerenderDownload() {
+        if (downloadLuts.length === 0) return;
+        if (!('caches' in window)) {
+            alert('当前浏览器不支持缓存预加载，请改用现代浏览器（Chrome / Edge / Firefox / Safari）。');
+            return;
+        }
+        const total = downloadLuts.length;
+        const urls = downloadLutUrls();
+        setDownloadPreloadUI('running', 0, total);
+        let done = 0;
+        try {
+            const cache = await caches.open(LUT_CACHE);
+            for (const url of urls) {
+                try {
+                    const hit = await cache.match(url);
+                    if (!hit) {
+                        const resp = await fetch(url);
+                        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                        await cache.put(url, resp.clone());
+                    }
+                } catch (e) {
+                    console.warn('其它风格预加载失败（已跳过）:', url, e);
+                }
+                done++;
+                setDownloadPreloadUI('running', done, total);
+                await new Promise(r => setTimeout(r, 0));
+            }
+        } catch (e) {
+            console.error('其它风格预加载异常:', e);
+        }
+        setDownloadPreloadUI('done', done, total);
+        // 有图时顺带把效果预渲染进内存缓存，保证点选秒出
+        if (sourceImage) {
+            const imgId = currentImageId || 'img';
+            const { w, h } = previewDims();
+            const savedLut = lutData, savedLight = currentLightAlg, savedGrain = currentGrainAlg;
+            for (const fname of downloadLuts) {
+                const key = downloadPath(fname);
+                const rk = imgId + '::' + key + '::none::none';
+                if (renderCache.has(rk)) continue;
                 try {
                     const text = await fetchLutFile(key);
                     const lut = parseCubeFile(text);
@@ -1940,15 +2008,10 @@
                         renderCache.delete(oldest);
                     }
                 } catch (e) { console.warn('其它风格预渲染失败（已跳过）:', fname, e); }
+                await new Promise(r => setTimeout(r, 0));
             }
-            done++;
-            setDlProg();
-            await new Promise(r => setTimeout(r, 0));
+            lutData = savedLut; currentLightAlg = savedLight; currentGrainAlg = savedGrain;
         }
-        lutData = savedLut; currentLightAlg = savedLight; currentGrainAlg = savedGrain;
-        preloadDownloadBtn.hidden = false;
-        preloadDownloadProgress.hidden = true;
-        preloadDownloadBtn.textContent = '✓ 已预加载 (' + done + '/' + total + ')';
     }
 
     // ---- 光影 / 颗粒 列表渲染 ----
